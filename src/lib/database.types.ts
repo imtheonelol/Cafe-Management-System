@@ -2,9 +2,9 @@ export interface Database {
   public: {
     Tables: {
       profiles: {
-        Row: { id: string; email: string; full_name: string | null; role: 'admin' | 'employee'; created_at: string; };
-        Insert: { id: string; email: string; full_name?: string | null; role?: 'admin' | 'employee'; created_at?: string; };
-        Update: { id?: string; email?: string; full_name?: string | null; role?: 'admin' | 'employee'; created_at?: string; };
+        Row: { id: string; email: string; password?: string; full_name: string | null; role: 'admin' | 'employee'; created_at: string; };
+        Insert: { id?: string; email: string; password?: string; full_name?: string | null; role?: 'admin' | 'employee'; created_at?: string; };
+        Update: { id?: string; email?: string; password?: string; full_name?: string | null; role?: 'admin' | 'employee'; created_at?: string; };
       };
       shifts: {
         Row: { id: string; employee_id: string; starting_cash: number; start_time: string; ending_cash: number | null; expected_cash: number | null; end_time: string | null; };

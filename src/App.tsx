@@ -59,7 +59,7 @@ function POSView({ session, profile }: { session: any, profile: Profile }) {
     setCartItems(prev => prev.map(item => item.id === productId ? { ...item, cartQuantity: item.cartQuantity + change > 0 ? item.cartQuantity + change : 0 } : item).filter(i => i.cartQuantity > 0));
   };
 
-  const calculateTotal = () => cartItems.reduce((sum, item) => sum + item.price * item.cartQuantity, 0) * 1.1;
+  const calculateTotal = () => cartItems.reduce((sum, item) => sum + item.price * item.cartQuantity, 0) * 1.12;
 
   const confirmPayment = async (paymentMethod: string, receiptNumber: string) => {
     try {
@@ -67,7 +67,7 @@ function POSView({ session, profile }: { session: any, profile: Profile }) {
       setCurrentOrder(order);
       setCurrentOrderItems(cartItems.map(item => ({ ...item, product: item, order_id: order.id, subtotal: item.price * item.cartQuantity }) as any));
       setShowCheckout(false); setShowReceipt(true); setCartItems([]);
-      ApiService.getProducts().then(setProducts); 
+      ApiService.getProducts().then(setProducts); // Refresh stock
     } catch { alert('Error processing payment.'); }
   };
 
@@ -106,10 +106,12 @@ function AdminView() {
   const [showBackOffice, setShowBackOffice] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
 
   const loadData = () => {
     ApiService.getCategories().then(setCategories);
     ApiService.getProducts().then(setProducts);
+    ApiService.getProfiles().then(setProfiles);
   };
 
   useEffect(() => { loadData(); }, []);
@@ -134,10 +136,10 @@ function AdminView() {
       <AdminDashboard />
       
       <button onClick={() => setShowBackOffice(true)} className="fixed bottom-8 right-8 flex items-center gap-2 px-6 py-3 bg-gray-900 text-white rounded-full shadow-lg hover:bg-gray-800 transition-colors z-40">
-        <Settings className="w-5 h-5" /> Manage Products
+        <Settings className="w-5 h-5" /> System Config
       </button>
       
-      <BackOffice isOpen={showBackOffice} onClose={() => setShowBackOffice(false)} products={products} categories={categories} onRefresh={loadData} />
+      <BackOffice isOpen={showBackOffice} onClose={() => setShowBackOffice(false)} products={products} categories={categories} profiles={profiles} onRefresh={loadData} />
     </div>
   );
 }
@@ -187,6 +189,10 @@ function AppContent() {
       });
     }
   }, [session, dbReady]);
+
+  const handleLogout = async () => {
+    await ApiService.logout();
+  };
 
   if (!dbReady || loading) {
     return (

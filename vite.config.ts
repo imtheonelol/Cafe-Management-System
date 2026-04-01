@@ -6,10 +6,9 @@ import path from 'path';
 // --- NoSQL File Database Plugin with Server-Side Caching ---
 function codespaceNoSQLDatabase() {
   const dbPath = path.resolve(process.cwd(), 'cafe_database.json');
-  let dbCache: any = null; // In-memory cache for ultra-fast loading
+  let dbCache: any = null;
 
   const initDB = () => {
-    // If the database file doesn't exist, create it with default accounts
     if (!fs.existsSync(dbPath)) {
       const initialData = {
         profiles: [
@@ -19,9 +18,15 @@ function codespaceNoSQLDatabase() {
         categories: [
           { id: 'c1', name: 'Coffee', created_at: new Date().toISOString() },
           { id: 'c2', name: 'Milk Tea', created_at: new Date().toISOString() },
-          { id: 'c3', name: 'Food', created_at: new Date().toISOString() }
+          { id: 'c3', name: 'Pastries', created_at: new Date().toISOString() }
         ],
-        products: [],
+        products: [
+          { id: 'p1', category_id: 'c1', name: 'Iced Caramel Macchiato', description: 'Espresso with vanilla and caramel drizzle', price: 165.00, image_url: 'https://images.pexels.com/photos/312418/pexels-photo-312418.jpeg?auto=compress&cs=tinysrgb&w=400', stock: 100, is_available: true, created_at: new Date().toISOString() },
+          { id: 'p2', category_id: 'c2', name: 'Okinawa Milk Tea', description: 'Roasted brown sugar milk tea with pearls', price: 120.00, image_url: 'https://images.pexels.com/photos/4955257/pexels-photo-4955257.jpeg?auto=compress&cs=tinysrgb&w=400', stock: 100, is_available: true, created_at: new Date().toISOString() },
+          { id: 'p3', category_id: 'c3', name: 'Butter Croissant', description: 'Classic flaky French pastry', price: 85.00, image_url: 'https://images.pexels.com/photos/2135677/pexels-photo-2135677.jpeg?auto=compress&cs=tinysrgb&w=400', stock: 50, is_available: true, created_at: new Date().toISOString() },
+          { id: 'p4', category_id: 'c1', name: 'Americano (Hot)', description: 'Freshly brewed espresso with hot water', price: 110.00, image_url: '', stock: 200, is_available: true, created_at: new Date().toISOString() }, // Dummy product with NO picture
+          { id: 'p5', category_id: 'c3', name: 'Blueberry Muffin', description: 'Freshly baked daily', price: 95.00, image_url: '', stock: 30, is_available: true, created_at: new Date().toISOString() } // Dummy product with NO picture
+        ],
         orders: [],
         order_items: [],
         shifts: []
@@ -29,7 +34,6 @@ function codespaceNoSQLDatabase() {
       fs.writeFileSync(dbPath, JSON.stringify(initialData, null, 2));
       dbCache = initialData;
     } else {
-      // Load existing database into cache
       dbCache = JSON.parse(fs.readFileSync(dbPath, 'utf-8'));
     }
   };
@@ -38,26 +42,20 @@ function codespaceNoSQLDatabase() {
     name: 'codespace-nosql-db',
     configureServer(server: any) {
       initDB();
-
-      // Create API Endpoints to talk to our Database File
       server.middlewares.use(async (req: any, res: any, next: any) => {
         if (req.url.startsWith('/api/db')) {
-          
-          // READ Data (Instantly from Cache)
           if (req.method === 'GET') {
             res.setHeader('Content-Type', 'application/json');
             res.end(JSON.stringify(dbCache));
             return;
           }
-
-          // WRITE Data (Update Cache, then save to File)
           if (req.method === 'POST') {
             let body = '';
             req.on('data', (chunk: any) => body += chunk.toString());
             req.on('end', () => {
               try {
-                dbCache = JSON.parse(body); // Update Server Cache
-                fs.writeFileSync(dbPath, JSON.stringify(dbCache, null, 2)); // Persist to File
+                dbCache = JSON.parse(body);
+                fs.writeFileSync(dbPath, JSON.stringify(dbCache, null, 2));
                 res.setHeader('Content-Type', 'application/json');
                 res.end(JSON.stringify({ success: true }));
               } catch (e) {
@@ -74,10 +72,7 @@ function codespaceNoSQLDatabase() {
   }
 }
 
-// https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react(), codespaceNoSQLDatabase()],
-  optimizeDeps: {
-    exclude: ['lucide-react'],
-  },
+  optimizeDeps: { exclude: ['lucide-react'] },
 });
