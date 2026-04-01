@@ -18,7 +18,7 @@ export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     const channel = supabase
       .channel('public:orders')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, () => {
-        fetchData(); // Refresh data when a new order comes in
+        fetchData();
       })
       .subscribe();
 
@@ -26,54 +26,37 @@ export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   }, []);
 
   const fetchData = async () => {
-    // Fetch all orders and join with the profile (employee) who made them
     const { data: ordersData, error } = await supabase
       .from('orders')
       .select('*, profiles(email, full_name)')
       .order('created_at', { ascending: false });
 
-    if (!error && ordersData) {
-      setOrders(ordersData);
-    }
+    if (!error && ordersData) setOrders(ordersData);
   };
 
   const fetchEmployees = async () => {
-    // Fetch all profiles so we can populate the filter dropdown
-    const { data } = await supabase
-      .from('profiles')
-      .select('id, email, full_name, role');
-    
-    if (data) {
-      setEmployees(data);
-    }
+    const { data } = await supabase.from('profiles').select('id, email, full_name, role');
+    if (data) setEmployees(data);
   };
 
-  // Dynamically filter orders based on selected dropdowns
   const filteredOrders = useMemo(() => {
     let filtered = orders;
 
-    // Filter by Employee
     if (employeeFilter !== 'all') {
       filtered = filtered.filter(order => order.employee_id === employeeFilter);
     }
 
-    // Filter by Time
     if (timeFilter !== 'all') {
       const now = new Date();
       filtered = filtered.filter(order => {
         const orderDate = new Date(order.created_at);
-        
-        if (timeFilter === 'today') {
-          return orderDate.toDateString() === now.toDateString();
-        }
+        if (timeFilter === 'today') return orderDate.toDateString() === now.toDateString();
         if (timeFilter === 'week') {
-          const weekAgo = new Date();
-          weekAgo.setDate(now.getDate() - 7);
+          const weekAgo = new Date(); weekAgo.setDate(now.getDate() - 7);
           return orderDate >= weekAgo;
         }
         if (timeFilter === 'month') {
-          const monthAgo = new Date();
-          monthAgo.setDate(now.getDate() - 30);
+          const monthAgo = new Date(); monthAgo.setDate(now.getDate() - 30);
           return orderDate >= monthAgo;
         }
         return true;
@@ -83,7 +66,6 @@ export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     return filtered;
   }, [orders, employeeFilter, timeFilter]);
 
-  // Calculate stats based on the FILTERED orders, not all orders
   const stats = {
     totalSales: filteredOrders.reduce((acc, curr) => acc + curr.total, 0),
     totalOrders: filteredOrders.length
@@ -98,29 +80,20 @@ export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         </button>
       </div>
 
-      {/* Filters Section */}
       <div className="max-w-7xl mx-auto mb-6 bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-wrap gap-4 items-center">
         <div className="flex items-center gap-2 text-gray-500 font-medium">
           <Filter className="w-5 h-5" />
           <span>Filters:</span>
         </div>
         
-        <select 
-          value={timeFilter} 
-          onChange={(e) => setTimeFilter(e.target.value)}
-          className="border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-600 focus:outline-none"
-        >
+        <select value={timeFilter} onChange={(e) => setTimeFilter(e.target.value)} className="border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-600 focus:outline-none">
           <option value="all">All Time</option>
           <option value="today">Today</option>
           <option value="week">Past 7 Days</option>
           <option value="month">Past 30 Days</option>
         </select>
 
-        <select 
-          value={employeeFilter} 
-          onChange={(e) => setEmployeeFilter(e.target.value)}
-          className="border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-600 focus:outline-none"
-        >
+        <select value={employeeFilter} onChange={(e) => setEmployeeFilter(e.target.value)} className="border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-600 focus:outline-none">
           <option value="all">All Employees</option>
           {employees.map(emp => (
             <option key={emp.id} value={emp.id}>
@@ -130,7 +103,6 @@ export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         </select>
       </div>
 
-      {/* Stats Section */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 max-w-7xl mx-auto">
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex items-center gap-4">
           <div className="p-4 bg-green-100 rounded-lg text-green-600"><DollarSign size={32} /></div>
@@ -148,8 +120,7 @@ export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         </div>
       </div>
 
-      {/* Transactions Table */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden max-w-7xl mx-auto">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden max-w-7xl mx-auto mb-20">
         <div className="p-6 border-b border-gray-200 flex justify-between items-center">
           <h2 className="text-xl font-bold">Transaction History</h2>
           <span className="text-sm text-gray-500">Showing {filteredOrders.length} results</span>

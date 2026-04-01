@@ -1,19 +1,23 @@
 import { useState, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { Settings, ShoppingBag, LogOut } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import type { Product, Category, CartItem, Order, OrderItem, Profile } from './lib/database.types';
+
 import { ProductGrid } from './components/ProductGrid';
 import { Cart } from './components/Cart';
 import { CheckoutModal } from './components/CheckoutModal';
 import { Receipt } from './components/Receipt';
 import { BackOffice } from './components/BackOffice';
-import { Login } from './components/Login';
 import { AdminDashboard } from './components/AdminDashboard';
+import { EmployeeLogin, AdminLogin } from './components/LoginPages';
+import { StartShift } from './components/StartShift';
 
-function App() {
+function AppContent() {
+  const navigate = useNavigate();
   const [session, setSession] = useState<any>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
-
+  
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
@@ -23,6 +27,8 @@ function App() {
   const [showBackOffice, setShowBackOffice] = useState(false);
   const [currentOrder, setCurrentOrder] = useState<Order | null>(null);
   const [currentOrderItems, setCurrentOrderItems] = useState<(OrderItem & { product: Product })[]>([]);
+  
+  const [shiftActive, setShiftActive] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -32,13 +38,12 @@ function App() {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
-      if (session) {
-        fetchProfile(session.user.id);
-      } else {
+      if (session) fetchProfile(session.user.id);
+      else {
         setProfile(null);
+        setShiftActive(false);
       }
     });
-
     return () => subscription.unsubscribe();
   }, []);
 
@@ -46,262 +51,138 @@ function App() {
     if (session) {
       loadCategories();
       loadProducts();
+      checkActiveShift();
     }
   }, [session]);
 
   const fetchProfile = async (userId: string) => {
-    const { data } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single();
-      
+    const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
     if (data) setProfile(data);
+  };
+
+  const checkActiveShift = async () => {
+    if (!session) return;
+    const { data } = await supabase
+      .from('shifts')
+      .select('*')
+      .eq('employee_id', session.user.id)
+      .is('end_time', null)
+      .single();
+    
+    if (data) setShiftActive(true);
   };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
+    navigate('/login');
   };
 
-  const loadCategories = async () => {
-    const { data, error } = await supabase.from('categories').select('*').order('name');
-    if (!error && data) setCategories(data);
-  };
-
-  const loadProducts = async () => {
-    const { data, error } = await supabase.from('products').select('*').order('name');
-    if (!error && data) setProducts(data);
-  };
+  const loadCategories = async () => { const { data } = await supabase.from('categories').select('*').order('name'); if (data) setCategories(data); };
+  const loadProducts = async () => { const { data } = await supabase.from('products').select('*').order('name'); if (data) setProducts(data); };
 
   const addToCart = (product: Product) => {
     setCartItems(prev => {
       const existing = prev.find(item => item.id === product.id);
-      if (existing) {
-        return prev.map(item =>
-          item.id === product.id
-            ? { ...item, cartQuantity: item.cartQuantity + 1 }
-            : item
-        );
-      }
+      if (existing) return prev.map(item => item.id === product.id ? { ...item, cartQuantity: item.cartQuantity + 1 } : item);
       return [...prev, { ...product, cartQuantity: 1 }];
     });
   };
 
   const updateQuantity = (productId: string, change: number) => {
-    setCartItems(prev => {
-      return prev
-        .map(item => {
-          if (item.id === productId) {
-            const newQuantity = item.cartQuantity + change;
-            return newQuantity > 0 ? { ...item, cartQuantity: newQuantity } : null;
-          }
-          return item;
-        })
-        .filter((item): item is CartItem => item !== null);
-    });
+    setCartItems(prev => prev.map(item => item.id === productId ? { ...item, cartQuantity: item.cartQuantity + change > 0 ? item.cartQuantity + change : 0 } : item).filter(i => i.cartQuantity > 0));
   };
 
-  const removeFromCart = (productId: string) => {
-    setCartItems(prev => prev.filter(item => item.id !== productId));
-  };
-
-  const calculateTotal = () => {
-    const subtotal = cartItems.reduce((sum, item) => sum + item.price * item.cartQuantity, 0);
-    return subtotal * 1.1; // 10% tax
-  };
-
-  const handleCheckout = () => {
-    if (cartItems.length === 0) return;
-    setShowCheckout(true);
-  };
+  const calculateTotal = () => cartItems.reduce((sum, item) => sum + item.price * item.cartQuantity, 0) * 1.1;
 
   const confirmPayment = async (paymentMethod: string, receiptNumber: string) => {
     if (!session) return;
-    
     try {
       const total = calculateTotal();
-      const orderNumber = `ORD-${Date.now()}`;
-
-      const { data: order, error: orderError } = await supabase
-        .from('orders')
-        .insert({
-          order_number: orderNumber,
-          total,
-          payment_method: paymentMethod,
-          payment_status: 'completed',
-          receipt_number: receiptNumber,
-          employee_id: session.user.id, // Tracking the logged-in employee
-        })
-        .select()
-        .single();
+      const { data: order, error: orderError } = await supabase.from('orders').insert({
+        order_number: `ORD-${Date.now()}`, total, payment_method: paymentMethod, payment_status: 'completed', receipt_number: receiptNumber, employee_id: session.user.id,
+      }).select().single();
 
       if (orderError) throw orderError;
 
-      const orderItemsData = cartItems.map(item => ({
-        order_id: order.id,
-        product_id: item.id,
-        quantity: item.cartQuantity,
-        price: item.price,
-        subtotal: item.price * item.cartQuantity,
-      }));
-
-      const { data: orderItems, error: itemsError } = await supabase
-        .from('order_items')
-        .insert(orderItemsData)
-        .select();
-
-      if (itemsError) throw itemsError;
+      const orderItemsData = cartItems.map(item => ({ order_id: order.id, product_id: item.id, quantity: item.cartQuantity, price: item.price, subtotal: item.price * item.cartQuantity }));
+      await supabase.from('order_items').insert(orderItemsData);
 
       for (const item of cartItems) {
-        await supabase
-          .from('products')
-          .update({ stock: item.stock - item.cartQuantity })
-          .eq('id', item.id);
+        await supabase.from('products').update({ stock: item.stock - item.cartQuantity }).eq('id', item.id);
       }
 
-      const orderItemsWithProducts = orderItems.map(item => ({
-        ...item,
-        product: cartItems.find(p => p.id === item.product_id)!,
-      }));
-
       setCurrentOrder(order);
-      setCurrentOrderItems(orderItemsWithProducts);
+      setCurrentOrderItems(cartItems.map(item => ({ ...item, product: item, order_id: order.id, subtotal: item.price * item.cartQuantity }) as any));
       setShowCheckout(false);
       setShowReceipt(true);
       setCartItems([]);
       loadProducts();
-
-      if (paymentMethod === 'cash') {
-        simulateCashDrawer();
-      }
     } catch (error) {
-      console.error('Error processing payment:', error);
-      alert('Error processing payment. Please try again.');
+      alert('Error processing payment.');
     }
   };
 
-  const simulateCashDrawer = () => {
-    console.log('CASH DRAWER OPENED');
-    alert('Cash drawer opened! Please collect payment.');
-  };
-
-  const handleAddProduct = async (productData: Omit<Product, 'id' | 'created_at'>) => {
-    try {
-      const { error } = await supabase.from('products').insert(productData);
-      if (error) throw error;
-      await loadProducts();
-      alert('Product added successfully!');
-    } catch (error) {
-      console.error('Error adding product:', error);
-      alert('Error adding product. Please try again.');
-    }
-  };
-
-  const handleUpdateProduct = async (id: string, updates: Partial<Product>) => {
-    try {
-      const { error } = await supabase.from('products').update(updates).eq('id', id);
-      if (error) throw error;
-      await loadProducts();
-      alert('Product updated successfully!');
-    } catch (error) {
-      console.error('Error updating product:', error);
-      alert('Error updating product. Please try again.');
-    }
-  };
-
-  const handleDeleteProduct = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this product?')) return;
-    try {
-      const { error } = await supabase.from('products').delete().eq('id', id);
-      if (error) throw error;
-      await loadProducts();
-      alert('Product deleted successfully!');
-    } catch (error) {
-      console.error('Error deleting product:', error);
-      alert('Error deleting product. Please try again.');
-    }
-  };
-
-  // ---------------- RENDER LOGIC ----------------
-
-  if (!session) {
-    return <Login />;
-  }
-
-  if (profile?.role === 'admin') {
-    return <AdminDashboard onLogout={handleLogout} />;
-  }
+  const handleAddProduct = async (productData: any) => { await supabase.from('products').insert(productData); await loadProducts(); };
+  const handleUpdateProduct = async (id: string, updates: any) => { await supabase.from('products').update(updates).eq('id', id); await loadProducts(); };
+  const handleDeleteProduct = async (id: string) => { await supabase.from('products').delete().eq('id', id); await loadProducts(); };
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50">
-      <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <ShoppingBag className="w-8 h-8 text-blue-600" />
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Cafe Management System</h1>
-            <p className="text-sm text-gray-600">Employee: {profile?.full_name || profile?.email}</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() => setShowBackOffice(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors"
-          >
-            <Settings className="w-5 h-5" />
-            Back Office
-          </button>
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-          >
-            <LogOut className="w-5 h-5" />
-            Sign Out
-          </button>
-        </div>
-      </header>
+    <Routes>
+      <Route path="/" element={<Navigate to="/login" />} />
+      <Route path="/login" element={!session ? <EmployeeLogin /> : <Navigate to="/pos" />} />
+      <Route path="/admin" element={!session ? <AdminLogin /> : <Navigate to="/admin/dashboard" />} />
+      
+      <Route path="/admin/dashboard" element={
+        session && profile?.role === 'admin' ? (
+          <>
+            <AdminDashboard onLogout={handleLogout} />
+            <button onClick={() => setShowBackOffice(true)} className="fixed bottom-8 right-8 flex items-center gap-2 px-6 py-3 bg-gray-900 text-white rounded-full shadow-lg hover:bg-gray-800 transition-colors z-40">
+              <Settings className="w-5 h-5" /> Manage Products
+            </button>
+            <BackOffice isOpen={showBackOffice} onClose={() => setShowBackOffice(false)} products={products} categories={categories} onAddProduct={handleAddProduct} onUpdateProduct={handleUpdateProduct} onDeleteProduct={handleDeleteProduct} />
+          </>
+        ) : <Navigate to="/admin" />
+      } />
 
-      <div className="flex-1 flex overflow-hidden">
-        <ProductGrid
-          products={products}
-          categories={categories}
-          selectedCategory={selectedCategory}
-          onCategoryChange={setSelectedCategory}
-          onAddToCart={addToCart}
-        />
-        <Cart
-          items={cartItems}
-          onUpdateQuantity={updateQuantity}
-          onRemoveItem={removeFromCart}
-          onCheckout={handleCheckout}
-        />
-      </div>
+      <Route path="/pos" element={
+        session ? (
+          <>
+            {!shiftActive && profile?.role === 'employee' && (
+              <StartShift employeeId={session.user.id} onShiftStarted={() => setShiftActive(true)} />
+            )}
+            <div className="h-screen flex flex-col bg-gray-50">
+              <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <ShoppingBag className="w-8 h-8 text-blue-600" />
+                  <div>
+                    <h1 className="text-2xl font-bold text-gray-900">Cafe POS</h1>
+                    <p className="text-sm text-gray-600">Employee: {profile?.full_name || profile?.email}</p>
+                  </div>
+                </div>
+                <button onClick={handleLogout} className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">
+                  <LogOut className="w-5 h-5" /> Logout
+                </button>
+              </header>
 
-      <CheckoutModal
-        isOpen={showCheckout}
-        onClose={() => setShowCheckout(false)}
-        items={cartItems}
-        total={calculateTotal()}
-        onConfirmPayment={confirmPayment}
-      />
+              <div className="flex-1 flex overflow-hidden">
+                <ProductGrid products={products} categories={categories} selectedCategory={selectedCategory} onCategoryChange={setSelectedCategory} onAddToCart={addToCart} />
+                <Cart items={cartItems} onUpdateQuantity={updateQuantity} onRemoveItem={(id) => setCartItems(prev => prev.filter(i => i.id !== id))} onCheckout={() => setShowCheckout(true)} />
+              </div>
 
-      <Receipt
-        isOpen={showReceipt}
-        onClose={() => setShowReceipt(false)}
-        order={currentOrder}
-        orderItems={currentOrderItems}
-      />
-
-      <BackOffice
-        isOpen={showBackOffice}
-        onClose={() => setShowBackOffice(false)}
-        products={products}
-        categories={categories}
-        onAddProduct={handleAddProduct}
-        onUpdateProduct={handleUpdateProduct}
-        onDeleteProduct={handleDeleteProduct}
-      />
-    </div>
+              <CheckoutModal isOpen={showCheckout} onClose={() => setShowCheckout(false)} items={cartItems} total={calculateTotal()} onConfirmPayment={confirmPayment} />
+              <Receipt isOpen={showReceipt} onClose={() => setShowReceipt(false)} order={currentOrder} orderItems={currentOrderItems} />
+            </div>
+          </>
+        ) : <Navigate to="/login" />
+      } />
+    </Routes>
   );
 }
 
-export default App;
+export default function App() {
+  return (
+    <Router>
+      <AppContent />
+    </Router>
+  );
+}
