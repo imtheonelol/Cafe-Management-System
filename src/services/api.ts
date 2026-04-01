@@ -7,14 +7,11 @@ export const ApiService = {
     const { data } = await supabase.auth.getSession();
     return data.session;
   },
-  
-  // 👉 ADD THIS MISSING FUNCTION
   onAuthStateChange(callback: (session: any) => void) {
     return supabase.auth.onAuthStateChange((_event, session) => {
       callback(session);
     });
   },
-
   async getProfile(userId: string) {
     const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
     return data;
@@ -86,6 +83,17 @@ export const ApiService = {
   async getActiveShift(employeeId: string) {
     const { data } = await supabase.from('shifts')
       .select('*').eq('employee_id', employeeId).is('end_time', null).single();
+    return data;
+  },
+  // NEW: Fetch the last ended shift to check expected drawer cash
+  async getLastShift() {
+    const { data } = await supabase
+      .from('shifts')
+      .select('*')
+      .not('end_time', 'is', null)
+      .order('end_time', { ascending: false })
+      .limit(1)
+      .maybeSingle();
     return data;
   },
   async startShift(employeeId: string, startingCash: number) {

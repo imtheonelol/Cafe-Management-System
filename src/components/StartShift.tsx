@@ -1,28 +1,38 @@
-import { useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { useState, useEffect } from 'react';
 import { DollarSign, AlertCircle } from 'lucide-react';
+import { ApiService } from '../services/api';
 import type { Shift } from '../lib/database.types';
 
 export function StartShift({ employeeId, onShiftStarted }: { employeeId: string, onShiftStarted: (shift: Shift) => void }) {
   const [cash, setCash] = useState('');
   const [loading, setLoading] = useState(false);
+  const [expectedCash, setExpectedCash] = useState<number | null>(null);
+
+  useEffect(() => {
+    // Fetch the last closed shift to see what SHOULD be in the drawer
+    ApiService.getLastShift().then((shift) => {
+      if (shift && shift.ending_cash !== null) {
+        setExpectedCash(shift.ending_cash);
+      } else {
+        setExpectedCash(0); // Default if it's the very first shift ever
+      }
+    });
+  }, []);
 
   const handleStartShift = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    
-    const { data, error } = await supabase.from('shifts').insert({
-      employee_id: employeeId,
-      starting_cash: parseFloat(cash)
-    }).select().single();
-
-    if (!error && data) {
-      onShiftStarted(data);
-    } else {
-      alert("Error starting shift.");
+    try {
+      const shift = await ApiService.startShift(employeeId, parseFloat(cash));
+      onShiftStarted(shift);
+    } catch (error) {
+      alert("Error starting shift. Please check your connection.");
     }
     setLoading(false);
   };
+
+  const actualCash = parseFloat(cash || '0');
+  const difference = expectedCash !== null ? actualCash - expectedCash : 0;
 
   return (
     <div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50 p-4">
@@ -31,8 +41,23 @@ export function StartShift({ employeeId, onShiftStarted }: { employeeId: string,
           <AlertCircle className="h-6 w-6 text-yellow-600" />
         </div>
         <h2 className="text-2xl font-bold text-gray-900 mb-2">Start Your Shift</h2>
-        <p className="text-gray-600 mb-6">Please count the money in the POS drawer left by the previous employee.</p>
+        <p className="text-gray-600 mb-6">Please count the money in the POS drawer left by the previous employee to prevent shortages.</p>
         
+        {expectedCash !== null && (
+          <div className="bg-gray-50 p-4 rounded-lg mb-6 text-sm border border-gray-200 text-left">
+            <div className="flex justify-between">
+              <span className="text-gray-600">Expected Drawer Cash:</span>
+              <span className="font-semibold">${expectedCash.toFixed(2)}</span>
+            </div>
+            {cash && (
+              <div className={`flex justify-between font-bold mt-2 pt-2 border-t ${difference === 0 ? 'text-green-600' : difference > 0 ? 'text-blue-600' : 'text-red-600'}`}>
+                <span>Discrepancy:</span>
+                <span>{difference === 0 ? 'Perfect Match' : difference > 0 ? `+$${difference.toFixed(2)} (Overage)` : `-$${Math.abs(difference).toFixed(2)} (Shortage)`}</span>
+              </div>
+            )}
+          </div>
+        )}
+
         <form onSubmit={handleStartShift}>
           <div className="relative rounded-md shadow-sm mb-6">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
