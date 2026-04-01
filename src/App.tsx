@@ -67,7 +67,7 @@ function POSView({ session, profile }: { session: any, profile: Profile }) {
       setCurrentOrder(order);
       setCurrentOrderItems(cartItems.map(item => ({ ...item, product: item, order_id: order.id, subtotal: item.price * item.cartQuantity }) as any));
       setShowCheckout(false); setShowReceipt(true); setCartItems([]);
-      ApiService.getProducts().then(setProducts); // Refresh stock
+      ApiService.getProducts().then(setProducts); 
     } catch { alert('Error processing payment.'); }
   };
 
@@ -149,7 +149,10 @@ function AppContent() {
   const [dbReady, setDbReady] = useState(false);
   const [session, setSession] = useState<any>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
+  
+  // Track loading status independently
   const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
     let unsub: any = null;
@@ -172,13 +175,12 @@ function AppContent() {
         });
         unsub = authListener.unsubscribe;
       })
-      .catch(err => {
-        console.error("Database Init Error:", err);
+      .catch((err) => {
+        console.error(err);
+        setErrorMsg("Failed to connect to Local Database. Please verify vite.config.ts and restart server.");
       });
 
-    return () => {
-      if (unsub) unsub();
-    };
+    return () => { if (unsub) unsub(); };
   }, []);
 
   useEffect(() => {
@@ -190,14 +192,18 @@ function AppContent() {
     }
   }, [session, dbReady]);
 
-  const handleLogout = async () => {
-    await ApiService.logout();
-  };
+  const handleLogout = async () => { await ApiService.logout(); };
 
-  if (!dbReady || loading) {
+  if (errorMsg) {
+    return <div className="h-screen flex items-center justify-center text-red-600 font-bold p-8 text-center">{errorMsg}</div>;
+  }
+
+  // FORCE wait until both the DB is ready AND the user profile is fetched before drawing routes
+  if (!dbReady || loading || (session && !profile)) {
     return (
-      <div className="h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-xl font-bold text-gray-400 animate-pulse">Initializing Database...</div>
+      <div className="h-screen flex flex-col items-center justify-center bg-gray-50">
+        <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+        <div className="text-xl font-bold text-gray-700">Loading System...</div>
       </div>
     );
   }
@@ -212,14 +218,14 @@ function AppContent() {
         !session ? <Navigate to="/login" /> :
         profile?.role === 'admin' ? <Navigate to="/admin/dashboard" /> :
         profile?.role === 'employee' ? <POSView session={session} profile={profile} /> :
-        <div className="h-screen flex items-center justify-center text-red-500">Error loading profile.</div>
+        <div className="h-screen flex items-center justify-center text-red-500">Error loading profile. <button onClick={handleLogout} className="ml-4 underline">Logout</button></div>
       } />
 
       <Route path="/admin/dashboard" element={
         !session ? <Navigate to="/admin" /> :
         profile?.role === 'employee' ? <Navigate to="/pos" /> :
         profile?.role === 'admin' ? <AdminView /> :
-        <div className="h-screen flex items-center justify-center text-red-500">Error loading profile.</div>
+        <div className="h-screen flex items-center justify-center text-red-500">Error loading profile. <button onClick={handleLogout} className="ml-4 underline">Logout</button></div>
       } />
     </Routes>
   );
