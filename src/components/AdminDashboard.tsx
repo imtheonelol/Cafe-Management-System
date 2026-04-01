@@ -1,8 +1,9 @@
 import { useEffect, useState, useMemo } from 'react';
+import { Users, DollarSign, ReceiptText, Filter, ClipboardCheck, ShoppingBag } from 'lucide-react';
+import { ApiService } from '../services/api';
 import { supabase } from '../lib/supabase';
-import { Users, DollarSign, ReceiptText, LogOut, Filter, ClipboardCheck, ShoppingBag } from 'lucide-react';
 
-export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
+export function AdminDashboard() {
   const [activeTab, setActiveTab] = useState<'transactions' | 'audits'>('transactions');
   const [orders, setOrders] = useState<any[]>([]);
   const [shifts, setShifts] = useState<any[]>([]);
@@ -13,26 +14,15 @@ export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
 
   useEffect(() => {
     fetchData();
-    fetchEmployees();
-    fetchShifts();
-    
     const channel = supabase.channel('public:orders').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, () => { fetchData(); }).subscribe();
     return () => { supabase.removeChannel(channel); };
   }, []);
 
   const fetchData = async () => {
-    const { data: ordersData } = await supabase.from('orders').select('*, profiles(email, full_name)').order('created_at', { ascending: false });
-    if (ordersData) setOrders(ordersData);
-  };
-
-  const fetchShifts = async () => {
-    const { data } = await supabase.from('shifts').select('*, profiles(email, full_name)').order('start_time', { ascending: false });
-    if (data) setShifts(data);
-  };
-
-  const fetchEmployees = async () => {
-    const { data } = await supabase.from('profiles').select('id, email, full_name, role');
-    if (data) setEmployees(data);
+    const data = await ApiService.getAdminDashboardData();
+    setOrders(data.orders);
+    setShifts(data.shifts);
+    setEmployees(data.employees);
   };
 
   const filteredOrders = useMemo(() => {
@@ -54,14 +44,7 @@ export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const stats = { totalSales: filteredOrders.reduce((acc, curr) => acc + curr.total, 0), totalOrders: filteredOrders.length };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8 pb-24">
-      <div className="flex justify-between items-center mb-8 max-w-7xl mx-auto">
-        <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
-        <button onClick={onLogout} className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">
-          <LogOut className="w-5 h-5" /> Sign Out
-        </button>
-      </div>
-
+    <div className="pb-24">
       {/* Tabs */}
       <div className="max-w-7xl mx-auto mb-6 flex gap-4 border-b border-gray-200 pb-4">
         <button onClick={() => setActiveTab('transactions')} className={`flex items-center gap-2 px-6 py-3 rounded-lg font-bold transition-colors ${activeTab === 'transactions' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100 border'}`}>

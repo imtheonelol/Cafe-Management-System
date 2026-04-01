@@ -27,7 +27,6 @@ function LoginForm({ title, role, icon = <Coffee className="mx-auto h-12 w-12 te
     if (error) {
       setError(error.message);
     } else {
-      // Redirect based on the page they logged into
       if (role === 'admin') navigate('/admin/dashboard');
       else navigate('/pos');
     }
