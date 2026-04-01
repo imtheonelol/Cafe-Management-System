@@ -67,7 +67,7 @@ function POSView({ session, profile }: { session: any, profile: Profile }) {
       setCurrentOrder(order);
       setCurrentOrderItems(cartItems.map(item => ({ ...item, product: item, order_id: order.id, subtotal: item.price * item.cartQuantity }) as any));
       setShowCheckout(false); setShowReceipt(true); setCartItems([]);
-      ApiService.getProducts().then(setProducts); // Refresh stock
+      ApiService.getProducts().then(setProducts); 
     } catch { alert('Error processing payment.'); }
   };
 
@@ -144,44 +144,54 @@ function AdminView() {
 
 // ---------------- LAYER 3: MAIN APP ROUTER ----------------
 function AppContent() {
+  const [dbReady, setDbReady] = useState(false);
   const [session, setSession] = useState<any>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [loading, setLoading] = useState(true); // <--- Fixes the white screen!
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    ApiService.getSession().then((session) => {
-      setSession(session);
-      if (!session) setLoading(false);
-    });
+    let unsub: any = null;
 
-    const { data: { subscription } } = ApiService.onAuthStateChange((session) => {
-      setSession(session);
-      if (!session) {
-        setProfile(null);
-        setLoading(false);
-      }
-    });
-    return () => subscription.unsubscribe();
+    ApiService.ensureInit()
+      .then(() => {
+        setDbReady(true);
+        
+        ApiService.getSession().then((sess) => {
+          setSession(sess);
+          if (!sess) setLoading(false);
+        });
+
+        const authListener = ApiService.onAuthStateChange((sess) => {
+          setSession(sess);
+          if (!sess) {
+            setProfile(null);
+            setLoading(false);
+          }
+        });
+        unsub = authListener.unsubscribe;
+      })
+      .catch(err => {
+        console.error("Database Init Error:", err);
+      });
+
+    return () => {
+      if (unsub) unsub();
+    };
   }, []);
 
   useEffect(() => {
-    if (session) {
+    if (session && dbReady) {
       ApiService.getProfile(session.user.id).then((p) => {
         setProfile(p);
-        setLoading(false); // Stop loading ONLY after profile is safely fetched
+        setLoading(false);
       });
     }
-  }, [session]);
+  }, [session, dbReady]);
 
-  const handleLogout = async () => {
-    await ApiService.logout();
-  };
-
-  // Show a loading screen while we fetch the user's role from the database
-  if (loading) {
+  if (!dbReady || loading) {
     return (
       <div className="h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-xl font-bold text-gray-400 animate-pulse">Loading System...</div>
+        <div className="text-xl font-bold text-gray-400 animate-pulse">Initializing Database...</div>
       </div>
     );
   }
@@ -196,20 +206,14 @@ function AppContent() {
         !session ? <Navigate to="/login" /> :
         profile?.role === 'admin' ? <Navigate to="/admin/dashboard" /> :
         profile?.role === 'employee' ? <POSView session={session} profile={profile} /> :
-        <div className="h-screen flex flex-col items-center justify-center">
-          <p>Error: Profile not found.</p>
-          <button onClick={handleLogout} className="mt-4 px-4 py-2 bg-blue-600 text-white rounded">Logout</button>
-        </div>
+        <div className="h-screen flex items-center justify-center text-red-500">Error loading profile.</div>
       } />
 
       <Route path="/admin/dashboard" element={
         !session ? <Navigate to="/admin" /> :
         profile?.role === 'employee' ? <Navigate to="/pos" /> :
         profile?.role === 'admin' ? <AdminView /> :
-        <div className="h-screen flex flex-col items-center justify-center">
-          <p>Error: Profile not found.</p>
-          <button onClick={handleLogout} className="mt-4 px-4 py-2 bg-blue-600 text-white rounded">Logout</button>
-        </div>
+        <div className="h-screen flex items-center justify-center text-red-500">Error loading profile.</div>
       } />
     </Routes>
   );

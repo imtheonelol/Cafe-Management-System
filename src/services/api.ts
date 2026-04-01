@@ -4,13 +4,13 @@ const SESSION_KEY = 'cafe_pos_session';
 let authListeners: ((session: any) => void)[] = [];
 
 // --- Database Connection Helpers ---
-// Fetch data from our custom Vite NoSQL backend
 async function getDB() {
   const res = await fetch('/api/db');
-  return await res.json();
+  if (!res.ok) throw new Error("Failed to fetch local database. Make sure vite.config.ts is updated.");
+  const text = await res.text();
+  return JSON.parse(text);
 }
 
-// Save data to our custom Vite NoSQL backend
 async function saveDB(newDbState: any) {
   await fetch('/api/db', {
     method: 'POST',
@@ -26,7 +26,7 @@ function generateId() {
 
 export const ApiService = {
   async ensureInit() {
-    // API naturally initializes itself in our vite.config.ts
+    await getDB(); // Verifies connection
   },
 
   // --- Auth Services ---
@@ -96,7 +96,7 @@ export const ApiService = {
       const reader = new FileReader();
       reader.onload = () => resolve(reader.result as string);
       reader.onerror = reject;
-      reader.readAsDataURL(file); // Converts image to storable Base64 string
+      reader.readAsDataURL(file); // Converts image to Base64 string for JSON
     });
   },
 

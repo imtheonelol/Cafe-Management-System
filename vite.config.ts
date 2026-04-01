@@ -18,7 +18,8 @@ function codespaceNoSQLDatabase() {
         ],
         categories: [
           { id: 'c1', name: 'Coffee', created_at: new Date().toISOString() },
-          { id: 'c2', name: 'Pastries', created_at: new Date().toISOString() }
+          { id: 'c2', name: 'Milk Tea', created_at: new Date().toISOString() },
+          { id: 'c3', name: 'Food', created_at: new Date().toISOString() }
         ],
         products: [],
         orders: [],
