@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
-import { Settings, ShoppingBag, LogOut } from 'lucide-react';
+import { Settings, ShoppingBag, LogOut, ShieldAlert } from 'lucide-react';
 import type { Product, Category, CartItem, Order, OrderItem, Profile, Shift } from './lib/database.types';
 import { ApiService } from './services/api';
 
@@ -146,34 +146,70 @@ function AdminView() {
 function AppContent() {
   const [session, setSession] = useState<any>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [loading, setLoading] = useState(true); // <--- Fixes the white screen!
 
   useEffect(() => {
-    ApiService.getSession().then(setSession);
-    const { data: { subscription } } = ApiService.onAuthStateChange(setSession);
+    ApiService.getSession().then((session) => {
+      setSession(session);
+      if (!session) setLoading(false);
+    });
+
+    const { data: { subscription } } = ApiService.onAuthStateChange((session) => {
+      setSession(session);
+      if (!session) {
+        setProfile(null);
+        setLoading(false);
+      }
+    });
     return () => subscription.unsubscribe();
   }, []);
 
   useEffect(() => {
-    if (session) ApiService.getProfile(session.user.id).then(setProfile);
-    else setProfile(null);
+    if (session) {
+      ApiService.getProfile(session.user.id).then((p) => {
+        setProfile(p);
+        setLoading(false); // Stop loading ONLY after profile is safely fetched
+      });
+    }
   }, [session]);
+
+  const handleLogout = async () => {
+    await ApiService.logout();
+  };
+
+  // Show a loading screen while we fetch the user's role from the database
+  if (loading) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-xl font-bold text-gray-400 animate-pulse">Loading System...</div>
+      </div>
+    );
+  }
 
   return (
     <Routes>
       <Route path="/" element={<Navigate to="/login" />} />
-      <Route path="/login" element={!session ? <EmployeeLogin /> : <Navigate to="/pos" />} />
-      <Route path="/admin" element={!session ? <AdminLogin /> : <Navigate to="/admin/dashboard" />} />
+      <Route path="/login" element={!session ? <EmployeeLogin /> : (profile?.role === 'admin' ? <Navigate to="/admin/dashboard" /> : <Navigate to="/pos" />)} />
+      <Route path="/admin" element={!session ? <AdminLogin /> : (profile?.role === 'admin' ? <Navigate to="/admin/dashboard" /> : <Navigate to="/pos" />)} />
       
       <Route path="/pos" element={
-        session && profile?.role === 'employee' ? <POSView session={session} profile={profile} /> : 
-        session && profile?.role === 'admin' ? <Navigate to="/admin/dashboard" /> : 
-        <Navigate to="/login" />
+        !session ? <Navigate to="/login" /> :
+        profile?.role === 'admin' ? <Navigate to="/admin/dashboard" /> :
+        profile?.role === 'employee' ? <POSView session={session} profile={profile} /> :
+        <div className="h-screen flex flex-col items-center justify-center">
+          <p>Error: Profile not found.</p>
+          <button onClick={handleLogout} className="mt-4 px-4 py-2 bg-blue-600 text-white rounded">Logout</button>
+        </div>
       } />
 
       <Route path="/admin/dashboard" element={
-        session && profile?.role === 'admin' ? <AdminView /> : 
-        session && profile?.role === 'employee' ? <Navigate to="/pos" /> : 
-        <Navigate to="/admin" />
+        !session ? <Navigate to="/admin" /> :
+        profile?.role === 'employee' ? <Navigate to="/pos" /> :
+        profile?.role === 'admin' ? <AdminView /> :
+        <div className="h-screen flex flex-col items-center justify-center">
+          <p>Error: Profile not found.</p>
+          <button onClick={handleLogout} className="mt-4 px-4 py-2 bg-blue-600 text-white rounded">Logout</button>
+        </div>
       } />
     </Routes>
   );
