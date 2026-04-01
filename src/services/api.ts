@@ -15,14 +15,16 @@ async function sqlRequest(payload: any) {
 function generateId() { return Math.random().toString(36).substring(2, 15); }
 
 export const ApiService = {
-  // --- Auth Services ---
+  async ensureInit() {
+    await sqlRequest({ action: 'QUERY', query: 'SELECT 1' });
+  },
+
   async login(email: string, password: string) {
     const users = await sqlRequest({ 
       action: 'QUERY', 
       query: 'SELECT * FROM profiles WHERE email = ? AND password = ?', 
       params: [email, password] 
     });
-    
     if (!users || users.length === 0) throw new Error("Invalid credentials.");
     const user = users[0];
     const session = { user: { id: user.id, email: user.email } };
@@ -36,6 +38,11 @@ export const ApiService = {
     return { unsubscribe: () => { authListeners = authListeners.filter(l => l !== callback); } };
   },
 
+  async getSession() {
+    const sessionStr = localStorage.getItem(SESSION_KEY);
+    return sessionStr ? JSON.parse(sessionStr) : null;
+  },
+
   async getProfile(userId: string) {
     const rows = await sqlRequest({ action: 'QUERY', query: 'SELECT * FROM profiles WHERE id = ?', params: [userId] });
     return rows[0] || null;
@@ -46,18 +53,15 @@ export const ApiService = {
     authListeners.forEach(l => l(null));
   },
 
-  // --- Management Services ---
   async getProfiles() { return await sqlRequest({ action: 'SELECT_ALL', table: 'profiles' }); },
   async addProfile(data: any) { await sqlRequest({ action: 'INSERT', table: 'profiles', data: { ...data, id: generateId(), created_at: new Date().toISOString() } }); },
   async deleteProfile(id: string) { await sqlRequest({ action: 'DELETE', table: 'profiles', id }); },
+  async updateProfile(id: string, data: any) { await sqlRequest({ action: 'UPDATE', table: 'profiles', data, id }); },
 
   async getProducts() { return await sqlRequest({ action: 'SELECT_ALL', table: 'products' }); },
   async getCategories() { return await sqlRequest({ action: 'SELECT_ALL', table: 'categories' }); },
   
-  async addProduct(data: any) { 
-    await sqlRequest({ action: 'INSERT', table: 'products', data: { ...data, id: generateId(), created_at: new Date().toISOString() } }); 
-  },
-  
+  async addProduct(data: any) { await sqlRequest({ action: 'INSERT', table: 'products', data: { ...data, id: generateId(), created_at: new Date().toISOString() } }); },
   async updateProduct(id: string, data: any) { await sqlRequest({ action: 'UPDATE', table: 'products', data, id }); },
   async deleteProduct(id: string) { await sqlRequest({ action: 'DELETE', table: 'products', id }); },
 
@@ -70,31 +74,31 @@ export const ApiService = {
     });
   },
 
-  // --- Order & POS Logic ---
   async createOrder(employeeId: string, cartItems: CartItem[], total: number, paymentMethod: string, receiptNumber: string) {
     const orderId = generateId();
     const orderData = {
       id: orderId, order_number: `ORD-${Date.now()}`, total, payment_method: paymentMethod,
       payment_status: 'completed', receipt_number: receiptNumber, employee_id: employeeId, created_at: new Date().toISOString()
     };
-    
     await sqlRequest({ action: 'INSERT', table: 'orders', data: orderData });
-
     for (const item of cartItems) {
       await sqlRequest({ action: 'INSERT', table: 'order_items', data: {
         id: generateId(), order_id: orderId, product_id: item.id, quantity: item.cartQuantity,
         price: item.price, subtotal: item.price * item.cartQuantity, created_at: new Date().toISOString()
       }});
-      // Update stock
       await sqlRequest({ action: 'QUERY', query: 'UPDATE products SET stock = stock - ? WHERE id = ?', params: [item.cartQuantity, item.id] });
     }
     window.dispatchEvent(new Event('db_changed'));
     return orderData;
   },
 
-  // --- Shift Audits ---
   async getActiveShift(employeeId: string) {
     const rows = await sqlRequest({ action: 'QUERY', query: 'SELECT * FROM shifts WHERE employee_id = ? AND end_time IS NULL', params: [employeeId] });
+    return rows[0] || null;
+  },
+
+  async getLastShift() {
+    const rows = await sqlRequest({ action: 'QUERY', query: 'SELECT * FROM shifts WHERE end_time IS NOT NULL ORDER BY end_time DESC LIMIT 1' });
     return rows[0] || null;
   },
 
@@ -105,6 +109,11 @@ export const ApiService = {
     return data;
   },
 
+  async getCashSalesForShift(employeeId: string, startTime: string) {
+    const rows = await sqlRequest({ action: 'QUERY', query: 'SELECT total FROM orders WHERE employee_id = ? AND payment_method = "cash" AND created_at >= ?', params: [employeeId, startTime] });
+    return rows.reduce((sum: number, o: any) => sum + o.total, 0);
+  },
+
   async endShift(shiftId: string, endingCash: number, expectedCash: number) {
     await sqlRequest({ action: 'UPDATE', table: 'shifts', id: shiftId, data: {
       ending_cash: endingCash, expected_cash: expectedCash, end_time: new Date().toISOString()
@@ -112,18 +121,11 @@ export const ApiService = {
   },
 
   async getAdminDashboardData() {
-    const orders = await sqlRequest({ action: 'QUERY', query: `
-      SELECT o.*, p.email, p.full_name FROM orders o 
-      LEFT JOIN profiles p ON o.employee_id = p.id ORDER BY o.created_at DESC` 
-    });
-    const shifts = await sqlRequest({ action: 'QUERY', query: `
-      SELECT s.*, p.email, p.full_name FROM shifts s 
-      LEFT JOIN profiles p ON s.employee_id = p.id ORDER BY s.start_time DESC` 
-    });
-    // Structure for component compatibility
+    const orders = await sqlRequest({ action: 'QUERY', query: 'SELECT o.*, p.email, p.full_name FROM orders o LEFT JOIN profiles p ON o.employee_id = p.id ORDER BY o.created_at DESC' });
+    const shifts = await sqlRequest({ action: 'QUERY', query: 'SELECT s.*, p.email, p.full_name FROM shifts s LEFT JOIN profiles p ON s.employee_id = p.id ORDER BY s.start_time DESC' });
     return {
-      orders: orders.map((o:any) => ({...o, profiles: {email: o.email, full_name: o.full_name}})),
-      shifts: shifts.map((s:any) => ({...s, profiles: {email: s.email, full_name: s.full_name}})),
+      orders: orders.map((o: any) => ({ ...o, profiles: { email: o.email, full_name: o.full_name } })),
+      shifts: shifts.map((s: any) => ({ ...s, profiles: { email: s.email, full_name: s.full_name } })),
       employees: await this.getProfiles()
     };
   }
