@@ -1,134 +1,179 @@
-import { supabase } from '../lib/supabase';
-import type { Product, CartItem } from '../lib/database.types';
+import type { Product, CartItem, Profile, Shift, Category, Order } from '../lib/database.types';
+
+const SESSION_KEY = 'cafe_pos_session';
+let authListeners: ((session: any) => void)[] = [];
+
+// --- Database Connection Helpers ---
+// Fetch data from our custom Vite NoSQL backend
+async function getDB() {
+  const res = await fetch('/api/db');
+  return await res.json();
+}
+
+// Save data to our custom Vite NoSQL backend
+async function saveDB(newDbState: any) {
+  await fetch('/api/db', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(newDbState)
+  });
+  window.dispatchEvent(new Event('db_changed')); // Tell UI to refresh
+}
+
+function generateId() {
+  return Math.random().toString(36).substring(2, 15);
+}
 
 export const ApiService = {
+  async ensureInit() {
+    // API naturally initializes itself in our vite.config.ts
+  },
+
   // --- Auth Services ---
+  async login(email: string, password: string) {
+    const db = await getDB();
+    const user = db.profiles.find((p: any) => p.email === email && p.password === password);
+    if (!user) throw new Error("Invalid login credentials.");
+    
+    const session = { user: { id: user.id, email: user.email } };
+    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    authListeners.forEach(listener => listener(session));
+    return session;
+  },
+  
   async getSession() {
-    const { data } = await supabase.auth.getSession();
-    return data.session;
+    const sessionStr = localStorage.getItem(SESSION_KEY);
+    return sessionStr ? JSON.parse(sessionStr) : null;
   },
+
   onAuthStateChange(callback: (session: any) => void) {
-    return supabase.auth.onAuthStateChange((_event, session) => {
-      callback(session);
-    });
+    authListeners.push(callback);
+    return { unsubscribe: () => { authListeners = authListeners.filter(l => l !== callback); } };
   },
+
   async getProfile(userId: string) {
-    const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
-    return data;
+    const db = await getDB();
+    return db.profiles.find((p: any) => p.id === userId) || null;
   },
+
   async logout() {
-    await supabase.auth.signOut();
+    localStorage.removeItem(SESSION_KEY);
+    authListeners.forEach(listener => listener(null));
   },
 
   // --- Catalog Services ---
-  async getCategories() {
-    const { data } = await supabase.from('categories').select('*').order('name');
-    return data || [];
+  async getCategories() { 
+    const db = await getDB(); 
+    return db.categories as Category[]; 
   },
-  async getProducts() {
-    const { data } = await supabase.from('products').select('*').order('name');
-    return data || [];
+  
+  async getProducts() { 
+    const db = await getDB(); 
+    return db.products as Product[]; 
   },
+  
   async addProduct(product: Omit<Product, 'id' | 'created_at'>) {
-    const { error } = await supabase.from('products').insert(product);
-    if (error) throw error;
+    const db = await getDB();
+    const newProduct = { ...product, id: generateId(), created_at: new Date().toISOString() };
+    db.products.push(newProduct);
+    await saveDB(db);
   },
+
   async updateProduct(id: string, updates: Partial<Product>) {
-    const { error } = await supabase.from('products').update(updates).eq('id', id);
-    if (error) throw error;
+    const db = await getDB();
+    db.products = db.products.map((p: any) => p.id === id ? { ...p, ...updates } : p);
+    await saveDB(db);
   },
+
   async deleteProduct(id: string) {
-    const { error } = await supabase.from('products').delete().eq('id', id);
-    if (error) throw error;
+    const db = await getDB();
+    db.products = db.products.filter((p: any) => p.id !== id);
+    await saveDB(db);
   },
-  async uploadImage(file: File) {
-    const fileExt = file.name.split('.').pop();
-    const fileName = `${Math.random()}.${fileExt}`;
-    const { error } = await supabase.storage.from('products').upload(fileName, file);
-    if (error) throw error;
-    const { data } = supabase.storage.from('products').getPublicUrl(fileName);
-    return data.publicUrl;
+
+  async uploadImage(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file); // Converts image to storable Base64 string
+    });
   },
 
   // --- Order Services ---
   async createOrder(employeeId: string, cartItems: CartItem[], total: number, paymentMethod: string, receiptNumber: string) {
-    const { data: order, error: orderError } = await supabase.from('orders').insert({
-      order_number: `ORD-${Date.now()}`,
-      total,
-      payment_method: paymentMethod,
-      payment_status: 'completed',
-      receipt_number: receiptNumber,
-      employee_id: employeeId
-    }).select().single();
+    const db = await getDB();
+    const newOrder = {
+      id: generateId(), order_number: `ORD-${Date.now()}`, total, payment_method: paymentMethod,
+      payment_status: 'completed', receipt_number: receiptNumber, employee_id: employeeId, created_at: new Date().toISOString()
+    };
 
-    if (orderError) throw orderError;
+    db.orders.push(newOrder);
 
-    const orderItemsData = cartItems.map(item => ({
-      order_id: order.id,
-      product_id: item.id,
-      quantity: item.cartQuantity,
-      price: item.price,
-      subtotal: item.price * item.cartQuantity
-    }));
+    cartItems.forEach(item => {
+      db.order_items.push({
+        id: generateId(), order_id: newOrder.id, product_id: item.id, quantity: item.cartQuantity,
+        price: item.price, subtotal: item.price * item.cartQuantity, created_at: new Date().toISOString()
+      });
+      const product = db.products.find((p: any) => p.id === item.id);
+      if (product) product.stock -= item.cartQuantity;
+    });
 
-    await supabase.from('order_items').insert(orderItemsData);
-
-    for (const item of cartItems) {
-      await supabase.from('products').update({ stock: item.stock - item.cartQuantity }).eq('id', item.id);
-    }
-    return order;
+    await saveDB(db);
+    return newOrder;
   },
 
   // --- Shift Services ---
   async getActiveShift(employeeId: string) {
-    const { data } = await supabase.from('shifts')
-      .select('*').eq('employee_id', employeeId).is('end_time', null).single();
-    return data;
+    const db = await getDB();
+    return db.shifts.find((s: any) => s.employee_id === employeeId && !s.end_time) || null;
   },
-  // NEW: Fetch the last ended shift to check expected drawer cash
+  
   async getLastShift() {
-    const { data } = await supabase
-      .from('shifts')
-      .select('*')
-      .not('end_time', 'is', null)
-      .order('end_time', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    return data;
+    const db = await getDB();
+    const endedShifts = db.shifts.filter((s: any) => s.end_time !== null);
+    if (endedShifts.length === 0) return null;
+    return endedShifts.sort((a: any, b: any) => new Date(b.end_time).getTime() - new Date(a.end_time).getTime())[0];
   },
+
   async startShift(employeeId: string, startingCash: number) {
-    const { data, error } = await supabase.from('shifts').insert({
-      employee_id: employeeId,
-      starting_cash: startingCash
-    }).select().single();
-    if (error) throw error;
-    return data;
+    const db = await getDB();
+    const newShift = {
+      id: generateId(), employee_id: employeeId, starting_cash: startingCash, start_time: new Date().toISOString(),
+      ending_cash: null, expected_cash: null, end_time: null
+    };
+    db.shifts.push(newShift);
+    await saveDB(db);
+    return newShift;
   },
+
   async getCashSalesForShift(employeeId: string, startTime: string) {
-    const { data } = await supabase.from('orders')
-      .select('total').eq('employee_id', employeeId).eq('payment_method', 'cash').gte('created_at', startTime);
-    return data?.reduce((sum, order) => sum + order.total, 0) || 0;
+    const db = await getDB();
+    return db.orders
+      .filter((o: any) => o.employee_id === employeeId && o.payment_method === 'cash' && new Date(o.created_at) >= new Date(startTime))
+      .reduce((sum: number, order: any) => sum + order.total, 0);
   },
+
   async endShift(shiftId: string, endingCash: number, expectedCash: number) {
-    const { error } = await supabase.from('shifts').update({
-      ending_cash: endingCash,
-      expected_cash: expectedCash,
-      end_time: new Date().toISOString()
-    }).eq('id', shiftId);
-    if (error) throw error;
+    const db = await getDB();
+    const shift = db.shifts.find((s: any) => s.id === shiftId);
+    if (shift) {
+      shift.ending_cash = endingCash;
+      shift.expected_cash = expectedCash;
+      shift.end_time = new Date().toISOString();
+      await saveDB(db);
+    }
   },
 
   // --- Admin Services ---
   async getAdminDashboardData() {
-    const [ordersRes, shiftsRes, profilesRes] = await Promise.all([
-      supabase.from('orders').select('*, profiles(email, full_name)').order('created_at', { ascending: false }),
-      supabase.from('shifts').select('*, profiles(email, full_name)').order('start_time', { ascending: false }),
-      supabase.from('profiles').select('id, email, full_name, role')
-    ]);
+    const db = await getDB();
+    const mapProfile = (item: any) => ({ ...item, profiles: db.profiles.find((p: any) => p.id === item.employee_id) || {} });
+    
     return {
-      orders: ordersRes.data || [],
-      shifts: shiftsRes.data || [],
-      employees: profilesRes.data || []
+      orders: db.orders.map(mapProfile).sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
+      shifts: db.shifts.map(mapProfile).sort((a: any, b: any) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime()),
+      employees: db.profiles
     };
   }
 };

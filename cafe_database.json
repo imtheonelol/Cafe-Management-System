@@ -1,0 +1,36 @@
+{
+  "profiles": [
+    {
+      "id": "1",
+      "email": "admin@cafe.com",
+      "password": "password",
+      "full_name": "Admin Boss",
+      "role": "admin",
+      "created_at": "2026-04-01T17:35:56.534Z"
+    },
+    {
+      "id": "2",
+      "email": "staff@cafe.com",
+      "password": "password",
+      "full_name": "Friendly Barista",
+      "role": "employee",
+      "created_at": "2026-04-01T17:35:56.535Z"
+    }
+  ],
+  "categories": [
+    {
+      "id": "c1",
+      "name": "Coffee",
+      "created_at": "2026-04-01T17:35:56.535Z"
+    },
+    {
+      "id": "c2",
+      "name": "Pastries",
+      "created_at": "2026-04-01T17:35:56.535Z"
+    }
+  ],
+  "products": [],
+  "orders": [],
+  "order_items": [],
+  "shifts": []
+}
