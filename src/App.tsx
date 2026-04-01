@@ -1,14 +1,19 @@
 import { useState, useEffect } from 'react';
-import { Settings, ShoppingBag } from 'lucide-react';
+import { Settings, ShoppingBag, LogOut } from 'lucide-react';
 import { supabase } from './lib/supabase';
-import type { Product, Category, CartItem, Order, OrderItem } from './lib/database.types';
+import type { Product, Category, CartItem, Order, OrderItem, Profile } from './lib/database.types';
 import { ProductGrid } from './components/ProductGrid';
 import { Cart } from './components/Cart';
 import { CheckoutModal } from './components/CheckoutModal';
 import { Receipt } from './components/Receipt';
 import { BackOffice } from './components/BackOffice';
+import { Login } from './components/Login';
+import { AdminDashboard } from './components/AdminDashboard';
 
 function App() {
+  const [session, setSession] = useState<any>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
@@ -20,30 +25,52 @@ function App() {
   const [currentOrderItems, setCurrentOrderItems] = useState<(OrderItem & { product: Product })[]>([]);
 
   useEffect(() => {
-    loadCategories();
-    loadProducts();
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (session) fetchProfile(session.user.id);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      if (session) {
+        fetchProfile(session.user.id);
+      } else {
+        setProfile(null);
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
-  const loadCategories = async () => {
-    const { data, error } = await supabase
-      .from('categories')
-      .select('*')
-      .order('name');
-
-    if (!error && data) {
-      setCategories(data);
+  useEffect(() => {
+    if (session) {
+      loadCategories();
+      loadProducts();
     }
+  }, [session]);
+
+  const fetchProfile = async (userId: string) => {
+    const { data } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single();
+      
+    if (data) setProfile(data);
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+  };
+
+  const loadCategories = async () => {
+    const { data, error } = await supabase.from('categories').select('*').order('name');
+    if (!error && data) setCategories(data);
   };
 
   const loadProducts = async () => {
-    const { data, error } = await supabase
-      .from('products')
-      .select('*')
-      .order('name');
-
-    if (!error && data) {
-      setProducts(data);
-    }
+    const { data, error } = await supabase.from('products').select('*').order('name');
+    if (!error && data) setProducts(data);
   };
 
   const addToCart = (product: Product) => {
@@ -80,7 +107,7 @@ function App() {
 
   const calculateTotal = () => {
     const subtotal = cartItems.reduce((sum, item) => sum + item.price * item.cartQuantity, 0);
-    return subtotal * 1.1;
+    return subtotal * 1.1; // 10% tax
   };
 
   const handleCheckout = () => {
@@ -89,6 +116,8 @@ function App() {
   };
 
   const confirmPayment = async (paymentMethod: string, receiptNumber: string) => {
+    if (!session) return;
+    
     try {
       const total = calculateTotal();
       const orderNumber = `ORD-${Date.now()}`;
@@ -101,6 +130,7 @@ function App() {
           payment_method: paymentMethod,
           payment_status: 'completed',
           receipt_number: receiptNumber,
+          employee_id: session.user.id, // Tracking the logged-in employee
         })
         .select()
         .single();
@@ -157,12 +187,8 @@ function App() {
 
   const handleAddProduct = async (productData: Omit<Product, 'id' | 'created_at'>) => {
     try {
-      const { error } = await supabase
-        .from('products')
-        .insert(productData);
-
+      const { error } = await supabase.from('products').insert(productData);
       if (error) throw error;
-
       await loadProducts();
       alert('Product added successfully!');
     } catch (error) {
@@ -173,13 +199,8 @@ function App() {
 
   const handleUpdateProduct = async (id: string, updates: Partial<Product>) => {
     try {
-      const { error } = await supabase
-        .from('products')
-        .update(updates)
-        .eq('id', id);
-
+      const { error } = await supabase.from('products').update(updates).eq('id', id);
       if (error) throw error;
-
       await loadProducts();
       alert('Product updated successfully!');
     } catch (error) {
@@ -190,15 +211,9 @@ function App() {
 
   const handleDeleteProduct = async (id: string) => {
     if (!confirm('Are you sure you want to delete this product?')) return;
-
     try {
-      const { error } = await supabase
-        .from('products')
-        .delete()
-        .eq('id', id);
-
+      const { error } = await supabase.from('products').delete().eq('id', id);
       if (error) throw error;
-
       await loadProducts();
       alert('Product deleted successfully!');
     } catch (error) {
@@ -207,6 +222,16 @@ function App() {
     }
   };
 
+  // ---------------- RENDER LOGIC ----------------
+
+  if (!session) {
+    return <Login />;
+  }
+
+  if (profile?.role === 'admin') {
+    return <AdminDashboard onLogout={handleLogout} />;
+  }
+
   return (
     <div className="h-screen flex flex-col bg-gray-50">
       <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
@@ -214,16 +239,25 @@ function App() {
           <ShoppingBag className="w-8 h-8 text-blue-600" />
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Cafe Management System</h1>
-            <p className="text-sm text-gray-600">Point of Sale</p>
+            <p className="text-sm text-gray-600">Employee: {profile?.full_name || profile?.email}</p>
           </div>
         </div>
-        <button
-          onClick={() => setShowBackOffice(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors"
-        >
-          <Settings className="w-5 h-5" />
-          Back Office
-        </button>
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => setShowBackOffice(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors"
+          >
+            <Settings className="w-5 h-5" />
+            Back Office
+          </button>
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+          >
+            <LogOut className="w-5 h-5" />
+            Sign Out
+          </button>
+        </div>
       </header>
 
       <div className="flex-1 flex overflow-hidden">

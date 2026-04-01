@@ -1,6 +1,29 @@
 export interface Database {
   public: {
     Tables: {
+      profiles: {
+        Row: {
+          id: string;
+          email: string;
+          full_name: string | null;
+          role: 'admin' | 'employee';
+          created_at: string;
+        };
+        Insert: {
+          id: string;
+          email: string;
+          full_name?: string | null;
+          role?: 'admin' | 'employee';
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          email?: string;
+          full_name?: string | null;
+          role?: 'admin' | 'employee';
+          created_at?: string;
+        };
+      };
       categories: {
         Row: {
           id: string;
@@ -61,6 +84,7 @@ export interface Database {
           payment_method: string;
           payment_status: string;
           receipt_number: string | null;
+          employee_id: string | null;
           created_at: string;
         };
         Insert: {
@@ -70,6 +94,7 @@ export interface Database {
           payment_method: string;
           payment_status?: string;
           receipt_number?: string | null;
+          employee_id?: string | null;
           created_at?: string;
         };
         Update: {
@@ -79,6 +104,7 @@ export interface Database {
           payment_method?: string;
           payment_status?: string;
           receipt_number?: string | null;
+          employee_id?: string | null;
           created_at?: string;
         };
       };
@@ -115,6 +141,7 @@ export interface Database {
   };
 }
 
+export type Profile = Database['public']['Tables']['profiles']['Row'];
 export type Category = Database['public']['Tables']['categories']['Row'];
 export type Product = Database['public']['Tables']['products']['Row'];
 export type Order = Database['public']['Tables']['orders']['Row'];
