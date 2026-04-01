@@ -9,12 +9,11 @@ export function StartShift({ employeeId, onShiftStarted }: { employeeId: string,
   const [expectedCash, setExpectedCash] = useState<number | null>(null);
 
   useEffect(() => {
-    // Fetch the last closed shift to see what SHOULD be in the drawer
     ApiService.getLastShift().then((shift) => {
       if (shift && shift.ending_cash !== null) {
         setExpectedCash(shift.ending_cash);
       } else {
-        setExpectedCash(0); // Default if it's the very first shift ever
+        setExpectedCash(0); 
       }
     });
   }, []);
@@ -26,7 +25,7 @@ export function StartShift({ employeeId, onShiftStarted }: { employeeId: string,
       const shift = await ApiService.startShift(employeeId, parseFloat(cash));
       onShiftStarted(shift);
     } catch (error) {
-      alert("Error starting shift. Please check your connection.");
+      alert("Error starting shift.");
     }
     setLoading(false);
   };

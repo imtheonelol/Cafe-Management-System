@@ -32,5 +32,24 @@
   "products": [],
   "orders": [],
   "order_items": [],
-  "shifts": []
+  "shifts": [
+    {
+      "id": "5hymylkmuqw",
+      "employee_id": "2",
+      "starting_cash": 500,
+      "start_time": "2026-04-01T17:46:21.142Z",
+      "ending_cash": 400,
+      "expected_cash": 500,
+      "end_time": "2026-04-01T17:46:29.907Z"
+    },
+    {
+      "id": "2d5fwf0nkkc",
+      "employee_id": "2",
+      "starting_cash": 500,
+      "start_time": "2026-04-01T17:46:41.076Z",
+      "ending_cash": 500,
+      "expected_cash": 500,
+      "end_time": "2026-04-01T17:46:48.624Z"
+    }
+  ]
 }

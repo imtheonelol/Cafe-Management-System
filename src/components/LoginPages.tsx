@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { supabase } from '../lib/supabase';
 import { Coffee, Lock, Mail, ShieldAlert } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { ApiService } from '../services/api';
 
 export function EmployeeLogin() {
   return <LoginForm title="Employee POS Login" role="employee" />;
@@ -12,8 +12,8 @@ export function AdminLogin() {
 }
 
 function LoginForm({ title, role, icon = <Coffee className="mx-auto h-12 w-12 text-blue-600" /> }: { title: string, role: string, icon?: React.ReactNode }) {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState(role === 'admin' ? 'admin@cafe.com' : 'staff@cafe.com');
+  const [password, setPassword] = useState('password');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
@@ -22,13 +22,12 @@ function LoginForm({ title, role, icon = <Coffee className="mx-auto h-12 w-12 te
     e.preventDefault();
     setLoading(true);
     setError(null);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    
-    if (error) {
-      setError(error.message);
-    } else {
+    try {
+      await ApiService.login(email, password);
       if (role === 'admin') navigate('/admin/dashboard');
       else navigate('/pos');
+    } catch (err: any) {
+      setError(err.message);
     }
     setLoading(false);
   };

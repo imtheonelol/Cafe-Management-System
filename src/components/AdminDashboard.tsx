@@ -1,7 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
 import { Users, DollarSign, ReceiptText, Filter, ClipboardCheck, ShoppingBag } from 'lucide-react';
 import { ApiService } from '../services/api';
-import { supabase } from '../lib/supabase';
 
 export function AdminDashboard() {
   const [activeTab, setActiveTab] = useState<'transactions' | 'audits'>('transactions');
@@ -14,8 +13,8 @@ export function AdminDashboard() {
 
   useEffect(() => {
     fetchData();
-    const channel = supabase.channel('public:orders').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, () => { fetchData(); }).subscribe();
-    return () => { supabase.removeChannel(channel); };
+    window.addEventListener('db_changed', fetchData);
+    return () => window.removeEventListener('db_changed', fetchData);
   }, []);
 
   const fetchData = async () => {
@@ -45,7 +44,6 @@ export function AdminDashboard() {
 
   return (
     <div className="pb-24">
-      {/* Tabs */}
       <div className="max-w-7xl mx-auto mb-6 flex gap-4 border-b border-gray-200 pb-4">
         <button onClick={() => setActiveTab('transactions')} className={`flex items-center gap-2 px-6 py-3 rounded-lg font-bold transition-colors ${activeTab === 'transactions' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100 border'}`}>
           <ShoppingBag size={20} /> Transactions
@@ -111,8 +109,8 @@ export function AdminDashboard() {
                       <div>Out: {shift.end_time ? new Date(shift.end_time).toLocaleString() : 'Active Shift'}</div>
                     </td>
                     <td className="p-4">${shift.starting_cash.toFixed(2)}</td>
-                    <td className="p-4 font-semibold text-gray-800">{shift.expected_cash ? `$${shift.expected_cash.toFixed(2)}` : '---'}</td>
-                    <td className="p-4 font-semibold text-gray-800">{shift.ending_cash ? `$${shift.ending_cash.toFixed(2)}` : '---'}</td>
+                    <td className="p-4 font-semibold text-gray-800">{shift.expected_cash !== null ? `$${shift.expected_cash.toFixed(2)}` : '---'}</td>
+                    <td className="p-4 font-semibold text-gray-800">{shift.ending_cash !== null ? `$${shift.ending_cash.toFixed(2)}` : '---'}</td>
                     <td className={`p-4 font-bold ${statusColor}`}>
                       {shift.ending_cash === null ? 'In Progress' : (variance === 0 ? 'Perfect' : variance > 0 ? `+$${variance.toFixed(2)}` : `-$${Math.abs(variance).toFixed(2)}`)}
                     </td>
