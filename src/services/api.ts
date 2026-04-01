@@ -7,6 +7,14 @@ export const ApiService = {
     const { data } = await supabase.auth.getSession();
     return data.session;
   },
+  
+  // 👉 ADD THIS MISSING FUNCTION
+  onAuthStateChange(callback: (session: any) => void) {
+    return supabase.auth.onAuthStateChange((_event, session) => {
+      callback(session);
+    });
+  },
+
   async getProfile(userId: string) {
     const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
     return data;
