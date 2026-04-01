@@ -22,49 +22,38 @@ export function AdminDashboard() {
     setShifts(data.shifts);
   };
 
+  const isWithinTime = (dateStr: string) => {
+    if (timeFilter === 'all') return true;
+    const date = new Date(dateStr);
+    const now = new Date();
+    if (timeFilter === 'today') return date.toDateString() === now.toDateString();
+    if (timeFilter === 'week') {
+      const weekAgo = new Date(); weekAgo.setDate(now.getDate() - 7);
+      return date >= weekAgo;
+    }
+    return true;
+  };
+
   const filteredOrders = useMemo(() => {
-    let filtered = orders;
-    if (searchQuery.trim() !== '') {
-      const q = searchQuery.toLowerCase();
-      filtered = filtered.filter(o => o.profiles?.email?.toLowerCase().includes(q) || o.profiles?.full_name?.toLowerCase().includes(q));
-    }
-    if (timeFilter !== 'all') {
-      const now = new Date();
-      filtered = filtered.filter(o => {
-        const d = new Date(o.created_at);
-        if (timeFilter === 'today') return d.toDateString() === now.toDateString();
-        if (timeFilter === 'week') { const w = new Date(); w.setDate(now.getDate() - 7); return d >= w; }
-        if (timeFilter === 'month') { const m = new Date(); m.setDate(now.getDate() - 30); return d >= m; }
-        return true;
-      });
-    }
-    return filtered;
+    return orders.filter(o => 
+      isWithinTime(o.created_at) && 
+      (o.profiles?.email?.toLowerCase().includes(searchQuery.toLowerCase()) || 
+       o.profiles?.full_name?.toLowerCase().includes(searchQuery.toLowerCase()))
+    );
   }, [orders, searchQuery, timeFilter]);
 
   const filteredShifts = useMemo(() => {
-    let filtered = shifts;
-    if (searchQuery.trim() !== '') {
-      const q = searchQuery.toLowerCase();
-      filtered = filtered.filter(s => s.profiles?.email?.toLowerCase().includes(q) || s.profiles?.full_name?.toLowerCase().includes(q));
-    }
-    if (timeFilter !== 'all') {
-      const now = new Date();
-      filtered = filtered.filter(s => {
-        const d = new Date(s.start_time);
-        if (timeFilter === 'today') return d.toDateString() === now.toDateString();
-        if (timeFilter === 'week') { const w = new Date(); w.setDate(now.getDate() - 7); return d >= w; }
-        if (timeFilter === 'month') { const m = new Date(); m.setDate(now.getDate() - 30); return d >= m; }
-        return true;
-      });
-    }
-    return filtered;
+    return shifts.filter(s => 
+      isWithinTime(s.start_time) && 
+      (s.profiles?.email?.toLowerCase().includes(searchQuery.toLowerCase()) || 
+       s.profiles?.full_name?.toLowerCase().includes(searchQuery.toLowerCase()))
+    );
   }, [shifts, searchQuery, timeFilter]);
 
   const stats = { totalSales: filteredOrders.reduce((acc, curr) => acc + curr.total, 0), totalOrders: filteredOrders.length };
 
   return (
-    <div className="pb-24">
-      {/* Tabs */}
+    <div className="pb-24 p-6">
       <div className="max-w-7xl mx-auto mb-6 flex gap-4 border-b border-gray-200 pb-4">
         <button onClick={() => setActiveTab('transactions')} className={`flex items-center gap-2 px-6 py-3 rounded-lg font-bold transition-colors ${activeTab === 'transactions' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100 border'}`}>
           <ShoppingBag size={20} /> Transactions
@@ -74,94 +63,49 @@ export function AdminDashboard() {
         </button>
       </div>
 
-      {/* Universal Filters */}
-      <div className="max-w-7xl mx-auto mb-6 bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-wrap gap-4 items-center">
-        <div className="flex items-center gap-2 text-gray-500 font-medium"><Filter className="w-5 h-5" /><span>Filters:</span></div>
-        
-        <select value={timeFilter} onChange={(e) => setTimeFilter(e.target.value)} className="border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-600 focus:outline-none">
-          <option value="all">All Time</option><option value="today">Today</option><option value="week">Past 7 Days</option><option value="month">Past 30 Days</option>
+      <div className="max-w-7xl mx-auto mb-6 bg-white p-4 rounded-xl shadow-sm border flex flex-wrap gap-4 items-center">
+        <div className="flex items-center gap-2 text-gray-500 font-medium"><Filter size={18}/><span>Filters:</span></div>
+        <select value={timeFilter} onChange={(e) => setTimeFilter(e.target.value)} className="border rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-600 focus:outline-none">
+          <option value="all">All Time</option>
+          <option value="today">Today</option>
+          <option value="week">This Week</option>
         </select>
-        
-        <div className="relative flex-1 max-w-md">
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Search className="h-4 w-4 text-gray-400" /></div>
-          <input 
-            type="text" 
-            placeholder="Search by employee email or name..." 
-            value={searchQuery} 
-            onChange={(e) => setSearchQuery(e.target.value)} 
-            className="border border-gray-300 rounded-lg pl-10 pr-4 py-2 w-full focus:ring-2 focus:ring-blue-600 focus:outline-none"
-          />
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+          <input type="text" placeholder="Search by email or name..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-600" />
         </div>
       </div>
 
       {activeTab === 'transactions' ? (
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 max-w-7xl mx-auto">
-            <div className="bg-white p-6 rounded-xl shadow-sm border flex items-center gap-4"><div className="p-4 bg-green-100 rounded-lg text-green-600"><DollarSign size={32} /></div><div><p className="text-gray-500 font-medium">Filtered Sales</p><p className="text-3xl font-bold">₱{stats.totalSales.toFixed(2)}</p></div></div>
+            <div className="bg-white p-6 rounded-xl shadow-sm border flex items-center gap-4"><div className="p-4 bg-green-100 rounded-lg text-green-600 font-bold text-2xl">₱</div><div><p className="text-gray-500 font-medium">Filtered Sales</p><p className="text-3xl font-bold">₱{stats.totalSales.toFixed(2)}</p></div></div>
             <div className="bg-white p-6 rounded-xl shadow-sm border flex items-center gap-4"><div className="p-4 bg-blue-100 rounded-lg text-blue-600"><ReceiptText size={32} /></div><div><p className="text-gray-500 font-medium">Filtered Transactions</p><p className="text-3xl font-bold">{stats.totalOrders}</p></div></div>
           </div>
-
           <div className="bg-white rounded-xl shadow-sm border overflow-hidden max-w-7xl mx-auto">
             <table className="w-full text-left">
-              <thead className="bg-gray-50">
-                <tr><th className="p-4 text-gray-600 font-medium">Order ID</th><th className="p-4 text-gray-600 font-medium">Date</th><th className="p-4 text-gray-600 font-medium">Employee</th><th className="p-4 text-gray-600 font-medium">Method</th><th className="p-4 text-gray-600 font-medium">Total</th></tr>
-              </thead>
+              <thead className="bg-gray-50"><tr><th className="p-4">Date</th><th className="p-4">Employee</th><th className="p-4">Method</th><th className="p-4">Total</th></tr></thead>
               <tbody>
-                {filteredOrders.length === 0 ? (
-                  <tr><td colSpan={5} className="p-8 text-center text-gray-500">No transactions match your search.</td></tr>
-                ) : (
-                  filteredOrders.map((order) => (
-                    <tr key={order.id} className="border-b hover:bg-gray-50">
-                      <td className="p-4 font-mono text-sm">{order.order_number}</td>
-                      <td className="p-4">{new Date(order.created_at).toLocaleString()}</td>
-                      <td className="p-4 flex items-center gap-2"><Users className="w-4 h-4 text-gray-400"/>{order.profiles?.full_name || order.profiles?.email}</td>
-                      <td className="p-4 uppercase text-sm">{order.payment_method}</td>
-                      <td className="p-4 font-bold text-green-600">₱{order.total.toFixed(2)}</td>
-                    </tr>
-                  ))
-                )}
+                {filteredOrders.map(o => (
+                  <tr key={o.id} className="border-b hover:bg-gray-50"><td className="p-4">{new Date(o.created_at).toLocaleString()}</td><td className="p-4">{o.profiles?.full_name || o.profiles?.email}</td><td className="p-4 uppercase text-sm font-bold">{o.payment_method}</td><td className="p-4 font-bold text-green-600">₱{o.total.toFixed(2)}</td></tr>
+                ))}
               </tbody>
             </table>
           </div>
         </>
       ) : (
         <div className="bg-white rounded-xl shadow-sm border overflow-hidden max-w-7xl mx-auto">
-          <div className="p-6 border-b border-gray-200 flex justify-between items-center">
-            <h2 className="text-xl font-bold">End of Shift Audits</h2>
-            <span className="text-sm text-gray-500">Showing {filteredShifts.length} results</span>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left min-w-[800px]">
-              <thead className="bg-gray-50">
-                <tr><th className="p-4 text-gray-600 font-medium">Employee</th><th className="p-4 text-gray-600 font-medium">Start / End Time</th><th className="p-4 text-gray-600 font-medium">Starting Cash</th><th className="p-4 text-gray-600 font-medium">Expected Cash</th><th className="p-4 text-gray-600 font-medium">Actual Cash</th><th className="p-4 text-gray-600 font-medium">Variance</th></tr>
-              </thead>
-              <tbody>
-                {filteredShifts.length === 0 ? (
-                  <tr><td colSpan={6} className="p-8 text-center text-gray-500">No shifts match your search.</td></tr>
-                ) : (
-                  filteredShifts.map((shift) => {
-                    const variance = shift.ending_cash !== null ? shift.ending_cash - shift.expected_cash : 0;
-                    const statusColor = shift.ending_cash === null ? 'text-gray-500' : variance === 0 ? 'text-green-600' : variance > 0 ? 'text-blue-600' : 'text-red-600';
-                    return (
-                      <tr key={shift.id} className="border-b hover:bg-gray-50">
-                        <td className="p-4 font-medium">{shift.profiles?.full_name || shift.profiles?.email}</td>
-                        <td className="p-4 text-sm text-gray-600">
-                          <div>In: {new Date(shift.start_time).toLocaleString()}</div>
-                          <div>Out: {shift.end_time ? new Date(shift.end_time).toLocaleString() : 'Active Shift'}</div>
-                        </td>
-                        <td className="p-4">₱{shift.starting_cash.toFixed(2)}</td>
-                        <td className="p-4 font-semibold text-gray-800">{shift.expected_cash !== null ? `₱${shift.expected_cash.toFixed(2)}` : '---'}</td>
-                        <td className="p-4 font-semibold text-gray-800">{shift.ending_cash !== null ? `₱${shift.ending_cash.toFixed(2)}` : '---'}</td>
-                        <td className={`p-4 font-bold ${statusColor}`}>
-                          {shift.ending_cash === null ? 'In Progress' : (variance === 0 ? 'Perfect' : variance > 0 ? `+₱${variance.toFixed(2)}` : `-₱${Math.abs(variance).toFixed(2)}`)}
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+          <table className="w-full text-left">
+            <thead className="bg-gray-50"><tr><th className="p-4">Employee</th><th className="p-4">Starting Cash</th><th className="p-4">Expected</th><th className="p-4">Actual</th><th className="p-4">Variance</th></tr></thead>
+            <tbody>
+              {filteredShifts.map(s => {
+                const variance = s.ending_cash !== null ? s.ending_cash - s.expected_cash : 0;
+                return (
+                  <tr key={s.id} className="border-b hover:bg-gray-50"><td className="p-4">{s.profiles?.full_name || s.profiles?.email}</td><td className="p-4">₱{s.starting_cash.toFixed(2)}</td><td className="p-4">₱{s.expected_cash?.toFixed(2) || '---'}</td><td className="p-4">₱{s.ending_cash?.toFixed(2) || '---'}</td><td className={`p-4 font-bold ${variance < 0 ? 'text-red-600' : 'text-green-600'}`}>{s.ending_cash === null ? 'Active' : `₱${variance.toFixed(2)}`}</td></tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
     </div>

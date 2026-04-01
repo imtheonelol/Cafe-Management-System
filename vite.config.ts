@@ -3,13 +3,17 @@ import react from '@vitejs/plugin-react';
 import sqlite3 from 'sqlite3';
 import { open } from 'sqlite';
 import path from 'path';
+import fs from 'fs';
 
+// --- SQLite Database Plugin ---
 function codespaceSqliteDatabase() {
   const dbPath = path.resolve(process.cwd(), 'cafe_management.db');
   let db: any = null;
 
   const initDB = async () => {
     db = await open({ filename: dbPath, driver: sqlite3.Database });
+    
+    // Create Tables with relational structure
     await db.exec(`
       CREATE TABLE IF NOT EXISTS profiles (id TEXT PRIMARY KEY, email TEXT UNIQUE, password TEXT, full_name TEXT, role TEXT, created_at TEXT);
       CREATE TABLE IF NOT EXISTS categories (id TEXT PRIMARY KEY, name TEXT UNIQUE, created_at TEXT);
@@ -19,15 +23,16 @@ function codespaceSqliteDatabase() {
       CREATE TABLE IF NOT EXISTS shifts (id TEXT PRIMARY KEY, employee_id TEXT, starting_cash REAL, start_time TEXT, ending_cash REAL, expected_cash REAL, end_time TEXT);
     `);
 
+    // Seed initial data if database is new
     const userCount = await db.get('SELECT count(*) as count FROM profiles');
     if (userCount.count === 0) {
       await db.run('INSERT INTO profiles (id, email, password, full_name, role, created_at) VALUES (?, ?, ?, ?, ?, ?)',
         ['1', 'admin@cafe.com', 'password', 'Admin Boss', 'admin', new Date().toISOString()]);
       await db.run('INSERT INTO profiles (id, email, password, full_name, role, created_at) VALUES (?, ?, ?, ?, ?, ?)',
         ['2', 'staff@cafe.com', 'password', 'Friendly Barista', 'employee', new Date().toISOString()]);
+      
       await db.run("INSERT INTO categories (id, name, created_at) VALUES ('c1', 'Coffee', datetime('now'))");
-      await db.run("INSERT INTO categories (id, name, created_at) VALUES ('c2', 'Milk Tea', datetime('now'))");
-      await db.run("INSERT INTO products (id, category_id, name, description, price, image_url, stock, is_available, created_at) VALUES ('p1', 'c1', 'Iced Caramel Macchiato', 'Rich espresso with caramel', 165.0, '', 100, 1, datetime('now'))");
+      await db.run("INSERT INTO categories (id, name, created_at) VALUES ('c2', 'Food', datetime('now'))");
     }
   };
 
@@ -43,7 +48,11 @@ function codespaceSqliteDatabase() {
             try {
               const { action, table, data, id, query, params } = JSON.parse(body);
               res.setHeader('Content-Type', 'application/json');
-              if (action === 'QUERY') {
+              
+              if (action === 'SELECT_ALL') {
+                const rows = await db.all(`SELECT * FROM ${table} ORDER BY created_at DESC`);
+                res.end(JSON.stringify(rows));
+              } else if (action === 'QUERY') {
                 const rows = await db.all(query, params || []);
                 res.end(JSON.stringify(rows));
               } else if (action === 'INSERT') {
@@ -56,9 +65,6 @@ function codespaceSqliteDatabase() {
                 const sets = Object.keys(data).map(k => `${k} = ?`).join(',');
                 await db.run(`UPDATE ${table} SET ${sets} WHERE id = ?`, [...Object.values(data), id]);
                 res.end(JSON.stringify({ success: true }));
-              } else if (action === 'SELECT_ALL') {
-                const rows = await db.all(`SELECT * FROM ${table} ORDER BY created_at DESC`);
-                res.end(JSON.stringify(rows));
               } else if (action === 'DELETE') {
                 await db.run(`DELETE FROM ${table} WHERE id = ?`, [id]);
                 res.end(JSON.stringify({ success: true }));
@@ -77,6 +83,6 @@ function codespaceSqliteDatabase() {
 }
 
 export default defineConfig({
-  plugins: [react(), codespaceNoSQLDatabase()], // Using the SQLite plugin defined above
+  plugins: [react(), codespaceSqliteDatabase()],
   optimizeDeps: { exclude: ['lucide-react'] },
 });
