@@ -3,103 +3,64 @@ import type { Product, CartItem, Profile, Shift, Category, Order } from '../lib/
 const SESSION_KEY = 'cafe_pos_session';
 let authListeners: ((session: any) => void)[] = [];
 
-async function getDB() {
-  try {
-    const res = await fetch('/api/db');
-    if (!res.ok) throw new Error("Server issue.");
-    return await res.json();
-  } catch (err) {
-    console.error("Local API Error:", err);
-    return null;
-  }
-}
-
-async function saveDB(newDbState: any) {
-  await fetch('/api/db', {
+async function sqlRequest(payload: any) {
+  const res = await fetch('/api/sql', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(newDbState)
+    body: JSON.stringify(payload)
   });
-  window.dispatchEvent(new Event('db_changed'));
+  return await res.json();
 }
 
 function generateId() { return Math.random().toString(36).substring(2, 15); }
 
 export const ApiService = {
-  async ensureInit() { 
-    const db = await getDB(); 
-    if (!db) throw new Error("Database failed to load.");
-  },
-
+  // --- Auth Services ---
   async login(email: string, password: string) {
-    const db = await getDB();
-    const user = db?.profiles.find((p: any) => p.email === email && p.password === password);
-    if (!user) throw new Error("Invalid login credentials.");
+    const users = await sqlRequest({ 
+      action: 'QUERY', 
+      query: 'SELECT * FROM profiles WHERE email = ? AND password = ?', 
+      params: [email, password] 
+    });
     
+    if (!users || users.length === 0) throw new Error("Invalid credentials.");
+    const user = users[0];
     const session = { user: { id: user.id, email: user.email } };
     localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-    authListeners.forEach(listener => listener(session));
+    authListeners.forEach(l => l(session));
     return session;
   },
-  async getSession() {
-    try {
-      const sessionStr = localStorage.getItem(SESSION_KEY);
-      return sessionStr ? JSON.parse(sessionStr) : null;
-    } catch {
-      localStorage.removeItem(SESSION_KEY);
-      return null;
-    }
-  },
+
   onAuthStateChange(callback: (session: any) => void) {
     authListeners.push(callback);
     return { unsubscribe: () => { authListeners = authListeners.filter(l => l !== callback); } };
   },
-  async logout() {
-    localStorage.removeItem(SESSION_KEY);
-    authListeners.forEach(listener => listener(null));
-  },
-  
+
   async getProfile(userId: string) {
-    const db = await getDB();
-    return db?.profiles.find((p: any) => p.id === userId) || null;
-  },
-  async getProfiles() {
-    const db = await getDB();
-    return db?.profiles as Profile[] || [];
-  },
-  async addProfile(profile: Omit<Profile, 'id' | 'created_at'>) {
-    const db = await getDB();
-    db.profiles.push({ ...profile, id: generateId(), created_at: new Date().toISOString() });
-    await saveDB(db);
-  },
-  async updateProfile(id: string, updates: Partial<Profile>) {
-    const db = await getDB();
-    db.profiles = db.profiles.map((p: any) => p.id === id ? { ...p, ...updates } : p);
-    await saveDB(db);
-  },
-  async deleteProfile(id: string) {
-    const db = await getDB();
-    db.profiles = db.profiles.filter((p: any) => p.id !== id);
-    await saveDB(db);
+    const rows = await sqlRequest({ action: 'QUERY', query: 'SELECT * FROM profiles WHERE id = ?', params: [userId] });
+    return rows[0] || null;
   },
 
-  async getCategories() { const db = await getDB(); return db?.categories as Category[] || []; },
-  async getProducts() { const db = await getDB(); return db?.products as Product[] || []; },
-  async addProduct(product: Omit<Product, 'id' | 'created_at'>) {
-    const db = await getDB();
-    db.products.push({ ...product, id: generateId(), created_at: new Date().toISOString() });
-    await saveDB(db);
+  async logout() {
+    localStorage.removeItem(SESSION_KEY);
+    authListeners.forEach(l => l(null));
   },
-  async updateProduct(id: string, updates: Partial<Product>) {
-    const db = await getDB();
-    db.products = db.products.map((p: any) => p.id === id ? { ...p, ...updates } : p);
-    await saveDB(db);
+
+  // --- Management Services ---
+  async getProfiles() { return await sqlRequest({ action: 'SELECT_ALL', table: 'profiles' }); },
+  async addProfile(data: any) { await sqlRequest({ action: 'INSERT', table: 'profiles', data: { ...data, id: generateId(), created_at: new Date().toISOString() } }); },
+  async deleteProfile(id: string) { await sqlRequest({ action: 'DELETE', table: 'profiles', id }); },
+
+  async getProducts() { return await sqlRequest({ action: 'SELECT_ALL', table: 'products' }); },
+  async getCategories() { return await sqlRequest({ action: 'SELECT_ALL', table: 'categories' }); },
+  
+  async addProduct(data: any) { 
+    await sqlRequest({ action: 'INSERT', table: 'products', data: { ...data, id: generateId(), created_at: new Date().toISOString() } }); 
   },
-  async deleteProduct(id: string) {
-    const db = await getDB();
-    db.products = db.products.filter((p: any) => p.id !== id);
-    await saveDB(db);
-  },
+  
+  async updateProduct(id: string, data: any) { await sqlRequest({ action: 'UPDATE', table: 'products', data, id }); },
+  async deleteProduct(id: string) { await sqlRequest({ action: 'DELETE', table: 'products', id }); },
+
   async uploadImage(file: File): Promise<string> {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -109,54 +70,61 @@ export const ApiService = {
     });
   },
 
+  // --- Order & POS Logic ---
   async createOrder(employeeId: string, cartItems: CartItem[], total: number, paymentMethod: string, receiptNumber: string) {
-    const db = await getDB();
-    const newOrder = { id: generateId(), order_number: `ORD-${Date.now()}`, total, payment_method: paymentMethod, payment_status: 'completed', receipt_number: receiptNumber, employee_id: employeeId, created_at: new Date().toISOString() };
-    db.orders.push(newOrder);
-    cartItems.forEach(item => {
-      db.order_items.push({ id: generateId(), order_id: newOrder.id, product_id: item.id, quantity: item.cartQuantity, price: item.price, subtotal: item.price * item.cartQuantity, created_at: new Date().toISOString() });
-      const product = db.products.find((p: any) => p.id === item.id);
-      if (product) product.stock -= item.cartQuantity;
-    });
-    await saveDB(db);
-    return newOrder;
+    const orderId = generateId();
+    const orderData = {
+      id: orderId, order_number: `ORD-${Date.now()}`, total, payment_method: paymentMethod,
+      payment_status: 'completed', receipt_number: receiptNumber, employee_id: employeeId, created_at: new Date().toISOString()
+    };
+    
+    await sqlRequest({ action: 'INSERT', table: 'orders', data: orderData });
+
+    for (const item of cartItems) {
+      await sqlRequest({ action: 'INSERT', table: 'order_items', data: {
+        id: generateId(), order_id: orderId, product_id: item.id, quantity: item.cartQuantity,
+        price: item.price, subtotal: item.price * item.cartQuantity, created_at: new Date().toISOString()
+      }});
+      // Update stock
+      await sqlRequest({ action: 'QUERY', query: 'UPDATE products SET stock = stock - ? WHERE id = ?', params: [item.cartQuantity, item.id] });
+    }
+    window.dispatchEvent(new Event('db_changed'));
+    return orderData;
   },
 
-  async getActiveShift(employeeId: string) { 
-    const db = await getDB(); 
-    return db?.shifts.find((s: any) => s.employee_id === employeeId && !s.end_time) || null; 
+  // --- Shift Audits ---
+  async getActiveShift(employeeId: string) {
+    const rows = await sqlRequest({ action: 'QUERY', query: 'SELECT * FROM shifts WHERE employee_id = ? AND end_time IS NULL', params: [employeeId] });
+    return rows[0] || null;
   },
-  async getLastShift() {
-    const db = await getDB();
-    const endedShifts = db?.shifts.filter((s: any) => s.end_time !== null) || [];
-    if (endedShifts.length === 0) return null;
-    return endedShifts.sort((a: any, b: any) => new Date(b.end_time).getTime() - new Date(a.end_time).getTime())[0];
-  },
+
   async startShift(employeeId: string, startingCash: number) {
-    const db = await getDB();
-    const newShift = { id: generateId(), employee_id: employeeId, starting_cash: startingCash, start_time: new Date().toISOString(), ending_cash: null, expected_cash: null, end_time: null };
-    db.shifts.push(newShift);
-    await saveDB(db);
-    return newShift;
+    const id = generateId();
+    const data = { id, employee_id: employeeId, starting_cash: startingCash, start_time: new Date().toISOString() };
+    await sqlRequest({ action: 'INSERT', table: 'shifts', data });
+    return data;
   },
-  async getCashSalesForShift(employeeId: string, startTime: string) {
-    const db = await getDB();
-    return db?.orders.filter((o: any) => o.employee_id === employeeId && o.payment_method === 'cash' && new Date(o.created_at) >= new Date(startTime)).reduce((sum: number, order: any) => sum + order.total, 0) || 0;
-  },
+
   async endShift(shiftId: string, endingCash: number, expectedCash: number) {
-    const db = await getDB();
-    const shift = db.shifts.find((s: any) => s.id === shiftId);
-    if (shift) { shift.ending_cash = endingCash; shift.expected_cash = expectedCash; shift.end_time = new Date().toISOString(); await saveDB(db); }
+    await sqlRequest({ action: 'UPDATE', table: 'shifts', id: shiftId, data: {
+      ending_cash: endingCash, expected_cash: expectedCash, end_time: new Date().toISOString()
+    }});
   },
 
   async getAdminDashboardData() {
-    const db = await getDB();
-    if (!db) return { orders: [], shifts: [], employees: [] };
-    const mapProfile = (item: any) => ({ ...item, profiles: db.profiles.find((p: any) => p.id === item.employee_id) || {} });
+    const orders = await sqlRequest({ action: 'QUERY', query: `
+      SELECT o.*, p.email, p.full_name FROM orders o 
+      LEFT JOIN profiles p ON o.employee_id = p.id ORDER BY o.created_at DESC` 
+    });
+    const shifts = await sqlRequest({ action: 'QUERY', query: `
+      SELECT s.*, p.email, p.full_name FROM shifts s 
+      LEFT JOIN profiles p ON s.employee_id = p.id ORDER BY s.start_time DESC` 
+    });
+    // Structure for component compatibility
     return {
-      orders: db.orders.map(mapProfile).sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
-      shifts: db.shifts.map(mapProfile).sort((a: any, b: any) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime()),
-      employees: db.profiles
+      orders: orders.map((o:any) => ({...o, profiles: {email: o.email, full_name: o.full_name}})),
+      shifts: shifts.map((s:any) => ({...s, profiles: {email: s.email, full_name: s.full_name}})),
+      employees: await this.getProfiles()
     };
   }
 };
