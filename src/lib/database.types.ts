@@ -7,9 +7,9 @@ export interface Database {
         Update: { id?: string; email?: string; full_name?: string | null; role?: 'admin' | 'employee'; created_at?: string; };
       };
       shifts: {
-        Row: { id: string; employee_id: string; starting_cash: number; start_time: string; ending_cash: number | null; end_time: string | null; };
-        Insert: { id?: string; employee_id: string; starting_cash: number; start_time?: string; ending_cash?: number | null; end_time?: string | null; };
-        Update: { id?: string; employee_id?: string; starting_cash?: number; start_time?: string; ending_cash?: number | null; end_time?: string | null; };
+        Row: { id: string; employee_id: string; starting_cash: number; start_time: string; ending_cash: number | null; expected_cash: number | null; end_time: string | null; };
+        Insert: { id?: string; employee_id: string; starting_cash: number; start_time?: string; ending_cash?: number | null; expected_cash?: number | null; end_time?: string | null; };
+        Update: { id?: string; employee_id?: string; starting_cash?: number; start_time?: string; ending_cash?: number | null; expected_cash?: number | null; end_time?: string | null; };
       };
       categories: {
         Row: { id: string; name: string; created_at: string; };

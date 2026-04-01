@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { DollarSign, AlertCircle } from 'lucide-react';
+import type { Shift } from '../lib/database.types';
 
-export function StartShift({ employeeId, onShiftStarted }: { employeeId: string, onShiftStarted: () => void }) {
+export function StartShift({ employeeId, onShiftStarted }: { employeeId: string, onShiftStarted: (shift: Shift) => void }) {
   const [cash, setCash] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -10,13 +11,13 @@ export function StartShift({ employeeId, onShiftStarted }: { employeeId: string,
     e.preventDefault();
     setLoading(true);
     
-    const { error } = await supabase.from('shifts').insert({
+    const { data, error } = await supabase.from('shifts').insert({
       employee_id: employeeId,
       starting_cash: parseFloat(cash)
-    });
+    }).select().single();
 
-    if (!error) {
-      onShiftStarted();
+    if (!error && data) {
+      onShiftStarted(data);
     } else {
       alert("Error starting shift.");
     }
@@ -30,7 +31,7 @@ export function StartShift({ employeeId, onShiftStarted }: { employeeId: string,
           <AlertCircle className="h-6 w-6 text-yellow-600" />
         </div>
         <h2 className="text-2xl font-bold text-gray-900 mb-2">Start Your Shift</h2>
-        <p className="text-gray-600 mb-6">Please count the money in the POS drawer left by the previous employee to prevent shortages.</p>
+        <p className="text-gray-600 mb-6">Please count the money in the POS drawer left by the previous employee.</p>
         
         <form onSubmit={handleStartShift}>
           <div className="relative rounded-md shadow-sm mb-6">
@@ -38,20 +39,12 @@ export function StartShift({ employeeId, onShiftStarted }: { employeeId: string,
               <DollarSign className="h-5 w-5 text-gray-400" />
             </div>
             <input
-              type="number"
-              step="0.01"
-              required
-              value={cash}
-              onChange={(e) => setCash(e.target.value)}
+              type="number" step="0.01" required value={cash} onChange={(e) => setCash(e.target.value)}
               className="focus:ring-blue-500 focus:border-blue-500 block w-full pl-10 text-xl border-gray-300 rounded-md py-3 border text-center"
               placeholder="0.00"
             />
           </div>
-          <button
-            type="submit"
-            disabled={loading || !cash}
-            className="w-full py-3 px-4 rounded-md shadow-sm text-lg font-medium text-white bg-green-600 hover:bg-green-700 disabled:bg-gray-400"
-          >
+          <button type="submit" disabled={loading || !cash} className="w-full py-3 px-4 rounded-md shadow-sm text-lg font-medium text-white bg-green-600 hover:bg-green-700 disabled:bg-gray-400">
             {loading ? 'Starting...' : 'Confirm Cash & Start POS'}
           </button>
         </form>

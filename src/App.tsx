@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { Settings, ShoppingBag, LogOut } from 'lucide-react';
 import { supabase } from './lib/supabase';
-import type { Product, Category, CartItem, Order, OrderItem, Profile } from './lib/database.types';
+import type { Product, Category, CartItem, Order, OrderItem, Profile, Shift } from './lib/database.types';
 
 import { ProductGrid } from './components/ProductGrid';
 import { Cart } from './components/Cart';
@@ -12,6 +12,7 @@ import { BackOffice } from './components/BackOffice';
 import { AdminDashboard } from './components/AdminDashboard';
 import { EmployeeLogin, AdminLogin } from './components/LoginPages';
 import { StartShift } from './components/StartShift';
+import { EndShiftModal } from './components/EndShiftModal';
 
 function AppContent() {
   const navigate = useNavigate();
@@ -25,10 +26,11 @@ function AppContent() {
   const [showCheckout, setShowCheckout] = useState(false);
   const [showReceipt, setShowReceipt] = useState(false);
   const [showBackOffice, setShowBackOffice] = useState(false);
+  const [showEndShift, setShowEndShift] = useState(false);
   const [currentOrder, setCurrentOrder] = useState<Order | null>(null);
   const [currentOrderItems, setCurrentOrderItems] = useState<(OrderItem & { product: Product })[]>([]);
   
-  const [shiftActive, setShiftActive] = useState(false);
+  const [activeShift, setActiveShift] = useState<Shift | null>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -39,20 +41,13 @@ function AppContent() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       if (session) fetchProfile(session.user.id);
-      else {
-        setProfile(null);
-        setShiftActive(false);
-      }
+      else { setProfile(null); setActiveShift(null); }
     });
     return () => subscription.unsubscribe();
   }, []);
 
   useEffect(() => {
-    if (session) {
-      loadCategories();
-      loadProducts();
-      checkActiveShift();
-    }
+    if (session) { loadCategories(); loadProducts(); checkActiveShift(); }
   }, [session]);
 
   const fetchProfile = async (userId: string) => {
@@ -62,17 +57,21 @@ function AppContent() {
 
   const checkActiveShift = async () => {
     if (!session) return;
-    const { data } = await supabase
-      .from('shifts')
-      .select('*')
-      .eq('employee_id', session.user.id)
-      .is('end_time', null)
-      .single();
-    
-    if (data) setShiftActive(true);
+    const { data } = await supabase.from('shifts').select('*').eq('employee_id', session.user.id).is('end_time', null).single();
+    if (data) setActiveShift(data);
+    else setActiveShift(null);
   };
 
-  const handleLogout = async () => {
+  const handleLogoutClick = () => {
+    if (activeShift && profile?.role === 'employee') {
+      setShowEndShift(true); // Ask for ending cash before logging out
+    } else {
+      executeLogout();
+    }
+  };
+
+  const executeLogout = async () => {
+    setShowEndShift(false);
     await supabase.auth.signOut();
     navigate('/login');
   };
@@ -94,6 +93,8 @@ function AppContent() {
 
   const calculateTotal = () => cartItems.reduce((sum, item) => sum + item.price * item.cartQuantity, 0) * 1.1;
 
+  const handleCheckout = () => { if (cartItems.length === 0) return; setShowCheckout(true); };
+
   const confirmPayment = async (paymentMethod: string, receiptNumber: string) => {
     if (!session) return;
     try {
@@ -107,19 +108,12 @@ function AppContent() {
       const orderItemsData = cartItems.map(item => ({ order_id: order.id, product_id: item.id, quantity: item.cartQuantity, price: item.price, subtotal: item.price * item.cartQuantity }));
       await supabase.from('order_items').insert(orderItemsData);
 
-      for (const item of cartItems) {
-        await supabase.from('products').update({ stock: item.stock - item.cartQuantity }).eq('id', item.id);
-      }
+      for (const item of cartItems) { await supabase.from('products').update({ stock: item.stock - item.cartQuantity }).eq('id', item.id); }
 
       setCurrentOrder(order);
       setCurrentOrderItems(cartItems.map(item => ({ ...item, product: item, order_id: order.id, subtotal: item.price * item.cartQuantity }) as any));
-      setShowCheckout(false);
-      setShowReceipt(true);
-      setCartItems([]);
-      loadProducts();
-    } catch (error) {
-      alert('Error processing payment.');
-    }
+      setShowCheckout(false); setShowReceipt(true); setCartItems([]); loadProducts();
+    } catch (error) { alert('Error processing payment.'); }
   };
 
   const handleAddProduct = async (productData: any) => { await supabase.from('products').insert(productData); await loadProducts(); };
@@ -135,7 +129,7 @@ function AppContent() {
       <Route path="/admin/dashboard" element={
         session && profile?.role === 'admin' ? (
           <>
-            <AdminDashboard onLogout={handleLogout} />
+            <AdminDashboard onLogout={executeLogout} />
             <button onClick={() => setShowBackOffice(true)} className="fixed bottom-8 right-8 flex items-center gap-2 px-6 py-3 bg-gray-900 text-white rounded-full shadow-lg hover:bg-gray-800 transition-colors z-40">
               <Settings className="w-5 h-5" /> Manage Products
             </button>
@@ -147,9 +141,14 @@ function AppContent() {
       <Route path="/pos" element={
         session ? (
           <>
-            {!shiftActive && profile?.role === 'employee' && (
-              <StartShift employeeId={session.user.id} onShiftStarted={() => setShiftActive(true)} />
+            {!activeShift && profile?.role === 'employee' && (
+              <StartShift employeeId={session.user.id} onShiftStarted={(shift) => setActiveShift(shift)} />
             )}
+            
+            {activeShift && (
+              <EndShiftModal isOpen={showEndShift} onClose={() => setShowEndShift(false)} shift={activeShift} employeeId={session.user.id} onConfirm={executeLogout} />
+            )}
+
             <div className="h-screen flex flex-col bg-gray-50">
               <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -159,14 +158,14 @@ function AppContent() {
                     <p className="text-sm text-gray-600">Employee: {profile?.full_name || profile?.email}</p>
                   </div>
                 </div>
-                <button onClick={handleLogout} className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">
-                  <LogOut className="w-5 h-5" /> Logout
+                <button onClick={handleLogoutClick} className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">
+                  <LogOut className="w-5 h-5" /> {activeShift ? 'End Shift & Logout' : 'Logout'}
                 </button>
               </header>
 
               <div className="flex-1 flex overflow-hidden">
                 <ProductGrid products={products} categories={categories} selectedCategory={selectedCategory} onCategoryChange={setSelectedCategory} onAddToCart={addToCart} />
-                <Cart items={cartItems} onUpdateQuantity={updateQuantity} onRemoveItem={(id) => setCartItems(prev => prev.filter(i => i.id !== id))} onCheckout={() => setShowCheckout(true)} />
+                <Cart items={cartItems} onUpdateQuantity={updateQuantity} onRemoveItem={(id) => setCartItems(prev => prev.filter(i => i.id !== id))} onCheckout={handleCheckout} />
               </div>
 
               <CheckoutModal isOpen={showCheckout} onClose={() => setShowCheckout(false)} items={cartItems} total={calculateTotal()} onConfirmPayment={confirmPayment} />
