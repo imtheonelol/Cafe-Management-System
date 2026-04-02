@@ -10,17 +10,26 @@ export function AdminDashboard() {
   const [searchQuery, setSearchQuery] = useState('');
   const [timeFilter, setTimeFilter] = useState('all');
 
-  useEffect(() => {
-    fetchData();
-    window.addEventListener('db_changed', fetchData);
-    return () => window.removeEventListener('db_changed', fetchData);
-  }, []);
-
   const fetchData = async () => {
     const data = await ApiService.getAdminDashboardData();
     setOrders(data.orders);
     setShifts(data.shifts);
   };
+
+  useEffect(() => {
+    fetchData();
+    
+    // Local window event for immediate updates (same device)
+    window.addEventListener('db_changed', fetchData);
+    
+    // Real-Time Polling for cross-device (DevOps style Live-Sync)
+    const interval = setInterval(fetchData, 3000); 
+
+    return () => {
+      window.removeEventListener('db_changed', fetchData);
+      clearInterval(interval);
+    };
+  }, []);
 
   const isWithinTime = (dateStr: string) => {
     if (timeFilter === 'all') return true;
@@ -86,9 +95,13 @@ export function AdminDashboard() {
             <table className="w-full text-left">
               <thead className="bg-gray-50"><tr><th className="p-4">Date</th><th className="p-4">Employee</th><th className="p-4">Method</th><th className="p-4">Total</th></tr></thead>
               <tbody>
-                {filteredOrders.map(o => (
-                  <tr key={o.id} className="border-b hover:bg-gray-50"><td className="p-4">{new Date(o.created_at).toLocaleString()}</td><td className="p-4">{o.profiles?.full_name || o.profiles?.email}</td><td className="p-4 uppercase text-sm font-bold">{o.payment_method}</td><td className="p-4 font-bold text-green-600">₱{o.total.toFixed(2)}</td></tr>
-                ))}
+                {filteredOrders.length === 0 ? (
+                  <tr><td colSpan={5} className="p-8 text-center text-gray-500">No transactions match your search.</td></tr>
+                ) : (
+                  filteredOrders.map((o) => (
+                    <tr key={o.id} className="border-b hover:bg-gray-50"><td className="p-4">{new Date(o.created_at).toLocaleString()}</td><td className="p-4">{o.profiles?.full_name || o.profiles?.email}</td><td className="p-4 uppercase text-sm font-bold">{o.payment_method}</td><td className="p-4 font-bold text-green-600">₱{o.total.toFixed(2)}</td></tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
