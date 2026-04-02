@@ -42,3 +42,5 @@ export type Product = Database['public']['Tables']['products']['Row'];
 export type Order = Database['public']['Tables']['orders']['Row'];
 export type OrderItem = Database['public']['Tables']['order_items']['Row'];
 export interface CartItem extends Product { cartQuantity: number; }
+export interface Ingredient { id: string; name: string; stock: number; unit: string; created_at: string; }
+export interface ProductIngredient { id: string; product_id: string; ingredient_id: string; quantity: number; created_at: string; }
