@@ -18,10 +18,25 @@ function postgresDatabasePlugin() {
 
   const initDB = async () => {
     try {
-      const adminClient = new Client({ connectionString: DEFAULT_DB_URL });
-      await adminClient.connect();
+      let adminClient = new Client({ connectionString: DEFAULT_DB_URL });
+      let isConnected = false;
+
+      // 🛠️ SMART RETRY: Wait for Docker to finish booting!
+      for (let i = 0; i < 6; i++) {
+        try {
+          await adminClient.connect();
+          isConnected = true;
+          break; // Connected successfully!
+        } catch (err) {
+          console.log(`[DevOps] PostgreSQL is waking up... waiting 2 seconds (${i + 1}/6)`);
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          adminClient = new Client({ connectionString: DEFAULT_DB_URL });
+        }
+      }
+
+      if (!isConnected) throw new Error("Could not connect to PostgreSQL. Is Docker running?");
+
       const dbCheck = await adminClient.query(`SELECT datname FROM pg_catalog.pg_database WHERE datname = '${DB_NAME}'`);
-      
       if (dbCheck.rowCount === 0) {
         console.log(`[DevOps] Database '${DB_NAME}' not found. Auto-creating...`);
         await adminClient.query(`CREATE DATABASE ${DB_NAME}`);
@@ -54,13 +69,11 @@ function postgresDatabasePlugin() {
       if (parseInt(userCount.rows[0].count) === 0) {
         console.log("[DevOps] Seeding Sample Products & Recipes...");
 
-        // 1. Core Config
         await pool.query(`INSERT INTO profiles (id, email, password, full_name, role, created_at) VALUES ('1', 'admin@cafe.com', 'password', 'Admin Boss', 'admin', CURRENT_TIMESTAMP)`);
         await pool.query(`INSERT INTO profiles (id, email, password, full_name, role, created_at) VALUES ('2', 'staff@cafe.com', 'password', 'Friendly Barista', 'employee', CURRENT_TIMESTAMP)`);
         await pool.query(`INSERT INTO settings (key, value) VALUES ('business_day_start', '08:00')`);
         await pool.query(`INSERT INTO categories (id, name, created_at) VALUES ('c1', 'Coffee', CURRENT_TIMESTAMP), ('c2', 'Milk Tea', CURRENT_TIMESTAMP), ('c3', 'Pastries', CURRENT_TIMESTAMP)`);
 
-        // 2. Raw Ingredients
         await pool.query(`INSERT INTO ingredients (id, name, stock, unit, created_at) VALUES 
           ('i1', 'Espresso Beans', 5000, 'g', CURRENT_TIMESTAMP),
           ('i2', 'Whole Milk', 10000, 'ml', CURRENT_TIMESTAMP),
@@ -71,22 +84,17 @@ function postgresDatabasePlugin() {
           ('i7', 'Brown Sugar Syrup', 2000, 'ml', CURRENT_TIMESTAMP)
         `);
 
-        // 3. Products
         await pool.query(`INSERT INTO products (id, category_id, name, description, price, image_url, stock, is_available, created_at) VALUES 
           ('p1', 'c1', 'Iced Caramel Macchiato', 'Rich espresso with milk and caramel drizzle', 165.0, 'https://images.pexels.com/photos/312418/pexels-photo-312418.jpeg?auto=compress&cs=tinysrgb&w=400', 100, true, CURRENT_TIMESTAMP),
           ('p2', 'c2', 'Okinawa Milk Tea', 'Roasted brown sugar milk tea with pearls', 120.0, 'https://images.pexels.com/photos/4955257/pexels-photo-4955257.jpeg?auto=compress&cs=tinysrgb&w=400', 100, true, CURRENT_TIMESTAMP),
           ('p3', 'c3', 'Butter Croissant', 'Classic flaky French pastry', 85.0, 'https://images.pexels.com/photos/2135677/pexels-photo-2135677.jpeg?auto=compress&cs=tinysrgb&w=400', 50, true, CURRENT_TIMESTAMP)
         `);
 
-        // 4. Link Products to Ingredients (The Recipes)
         await pool.query(`INSERT INTO product_ingredients (id, product_id, ingredient_id, quantity, created_at) VALUES 
-          -- Iced Caramel Macchiato Recipe (18g Espresso, 200ml Milk, 30ml Caramel, 1 Cup)
           ('pi1', 'p1', 'i1', 18, CURRENT_TIMESTAMP),
           ('pi2', 'p1', 'i2', 200, CURRENT_TIMESTAMP),
           ('pi3', 'p1', 'i3', 30, CURRENT_TIMESTAMP),
           ('pi4', 'p1', 'i4', 1, CURRENT_TIMESTAMP),
-          
-          -- Okinawa Milk Tea Recipe (15g Tea, 150ml Milk, 40ml Brown Sugar, 50g Pearls, 1 Cup)
           ('pi5', 'p2', 'i5', 15, CURRENT_TIMESTAMP),
           ('pi6', 'p2', 'i2', 150, CURRENT_TIMESTAMP),
           ('pi7', 'p2', 'i7', 40, CURRENT_TIMESTAMP),
