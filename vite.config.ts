@@ -4,13 +4,16 @@ import { Client } from 'pg';
 
 // ==========================================
 // 🛑 POSTGRESQL CONFIGURATION
-// If you installed PostgreSQL manually, change 'password' to your real password!
+// Change 'password' to your real database password!
 const PG_PASSWORD = 'password';
+
+// Using 127.0.0.1 instead of localhost fixes the Windows ECONNRESET bug
+const DB_HOST = '127.0.0.1';
 // ==========================================
 
 const DB_NAME = 'cafe_pos';
-const DEFAULT_DB_URL = `postgres://postgres:${PG_PASSWORD}@localhost:5432/postgres`;
-const DB_URL = `postgres://postgres:${PG_PASSWORD}@localhost:5432/${DB_NAME}`;
+const DEFAULT_DB_URL = `postgres://postgres:${PG_PASSWORD}@${DB_HOST}:5432/postgres`;
+const DB_URL = `postgres://postgres:${PG_PASSWORD}@${DB_HOST}:5432/${DB_NAME}`;
 
 function postgresDatabasePlugin() {
   let client: Client;
@@ -56,7 +59,7 @@ function postgresDatabasePlugin() {
       }
     } catch (error: any) {
       console.error("\n❌ [DATABASE ERROR]:", error.message, "\n");
-      dbConnectionError = error.message; // Save the error to show in React!
+      dbConnectionError = error.message; 
     }
   };
 
@@ -68,7 +71,6 @@ function postgresDatabasePlugin() {
         if (req.url.startsWith('/api/sql') && req.method === 'POST') {
           res.setHeader('Content-Type', 'application/json');
           
-          // If the database failed to connect, immediately tell React why
           if (dbConnectionError) {
             res.statusCode = 500;
             res.end(JSON.stringify({ error: `PostgreSQL Error: ${dbConnectionError}` }));
@@ -119,5 +121,5 @@ function postgresDatabasePlugin() {
 
 export default defineConfig({
   plugins: [react(), postgresDatabasePlugin()],
-  optimizeDeps: { exclude: ['lucide-react'] },
+  optimizeDeps: { exclude: ['lucide-react'] }
 });
