@@ -21,9 +21,3 @@ dist-ssr
 *.sln
 *.sw?
 .env
-
-pg_data
-<<<<<<< HEAD
-=======
-.bolt
->>>>>>> d693490caa1c2c98c26d31d1acc880f9139b7469
