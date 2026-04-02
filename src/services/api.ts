@@ -17,7 +17,7 @@ export const ApiService = {
   async checkConnection() { try { await this.ensureInit(); return true; } catch { return false; } },
   
   async login(email: string, password: string) {
-    const users = await sqlRequest({ action: 'QUERY', query: 'SELECT * FROM profiles WHERE email = ? AND password = ?', params: [email, password] });
+    const users = await sqlRequest({ action: 'QUERY', query: 'SELECT * FROM profiles WHERE email = $1 AND password = $2', params: [email, password] });
     if (!users || users.length === 0) throw new Error("Invalid credentials.");
     const session = { user: { id: users[0].id, email: users[0].email } };
     localStorage.setItem(SESSION_KEY, JSON.stringify(session));
@@ -27,12 +27,21 @@ export const ApiService = {
 
   onAuthStateChange(callback: (session: any) => void) { authListeners.push(callback); return { unsubscribe: () => { authListeners = authListeners.filter(l => l !== callback); } }; },
   async getSession() { const s = localStorage.getItem(SESSION_KEY); return s ? JSON.parse(s) : null; },
-  async getProfile(userId: string) { const r = await sqlRequest({ action: 'QUERY', query: 'SELECT * FROM profiles WHERE id = ?', params: [userId] }); return r[0] || null; },
+  async getProfile(userId: string) { const r = await sqlRequest({ action: 'QUERY', query: 'SELECT * FROM profiles WHERE id = $1', params: [userId] }); return r[0] || null; },
   async logout() { localStorage.removeItem(SESSION_KEY); authListeners.forEach(l => l(null)); },
   async getProfiles() { return await sqlRequest({ action: 'QUERY', query: 'SELECT * FROM profiles ORDER BY created_at DESC' }); },
 
   async getSettings() { const rows = await sqlRequest({ action: 'QUERY', query: 'SELECT * FROM settings' }); return rows.reduce((acc: any, row: any) => ({ ...acc, [row.key]: row.value }), {}); },
-  async updateSetting(key: string, value: string) { await sqlRequest({ action: 'QUERY', query: 'UPDATE settings SET value = ? WHERE key = ?', params: [value, key] }); },
+  
+  // ✨ FIX: Allow dynamic saving of new settings like the webhook URL
+  async updateSetting(key: string, value: string) { 
+    const existing = await sqlRequest({ action: 'QUERY', query: 'SELECT * FROM settings WHERE key = $1', params: [key] });
+    if (existing.length > 0) {
+      await sqlRequest({ action: 'QUERY', query: 'UPDATE settings SET value = $1 WHERE key = $2', params: [value, key] });
+    } else {
+      await sqlRequest({ action: 'QUERY', query: 'INSERT INTO settings (key, value) VALUES ($1, $2)', params: [key, value] });
+    }
+  },
 
   async addProfile(data: any) { await sqlRequest({ action: 'INSERT', table: 'profiles', data: { ...data, id: generateId(), created_at: new Date().toISOString() } }); },
   async deleteProfile(id: string) { await sqlRequest({ action: 'DELETE', table: 'profiles', id }); },
@@ -56,10 +65,10 @@ export const ApiService = {
 
     for (const item of cartItems) {
       await sqlRequest({ action: 'INSERT', table: 'order_items', data: { id: generateId(), order_id: orderId, product_id: item.id, quantity: item.cartQuantity, price: item.price, subtotal: item.price * item.cartQuantity, created_at: new Date().toISOString() }});
-      await sqlRequest({ action: 'QUERY', query: 'UPDATE products SET stock = stock - ? WHERE id = ?', params: [item.cartQuantity, item.id] });
-      const pIngs = await sqlRequest({ action: 'QUERY', query: 'SELECT * FROM product_ingredients WHERE product_id = ?', params: [item.id]});
+      await sqlRequest({ action: 'QUERY', query: 'UPDATE products SET stock = stock - $1 WHERE id = $2', params: [item.cartQuantity, item.id] });
+      const pIngs = await sqlRequest({ action: 'QUERY', query: 'SELECT * FROM product_ingredients WHERE product_id = $1', params: [item.id]});
       for (const pi of pIngs) {
-        await sqlRequest({ action: 'QUERY', query: 'UPDATE ingredients SET stock = stock - ? WHERE id = ?', params: [parseFloat(pi.quantity) * item.cartQuantity, pi.ingredient_id] });
+        await sqlRequest({ action: 'QUERY', query: 'UPDATE ingredients SET stock = stock - $1 WHERE id = $2', params: [parseFloat(pi.quantity) * item.cartQuantity, pi.ingredient_id] });
       }
     }
     window.dispatchEvent(new Event('db_changed'));
@@ -67,7 +76,7 @@ export const ApiService = {
   },
 
   async getActiveShift(employeeId: string) {
-    const rows = await sqlRequest({ action: 'QUERY', query: 'SELECT * FROM shifts WHERE employee_id = ? AND end_time IS NULL', params: [employeeId] });
+    const rows = await sqlRequest({ action: 'QUERY', query: 'SELECT * FROM shifts WHERE employee_id = $1 AND end_time IS NULL', params: [employeeId] });
     const shift = rows[0] || null;
     if (shift) {
       const settings = await this.getSettings();
@@ -88,15 +97,13 @@ export const ApiService = {
   async getLastShift() { const r = await sqlRequest({ action: 'QUERY', query: 'SELECT * FROM shifts WHERE end_time IS NOT NULL ORDER BY end_time DESC LIMIT 1' }); return r[0] ? {...r[0], ending_cash: parseFloat(r[0].ending_cash)} : null; },
   async startShift(employeeId: string, startingCash: number) { const data = { id: generateId(), employee_id: employeeId, starting_cash: startingCash, start_time: new Date().toISOString() }; await sqlRequest({ action: 'INSERT', table: 'shifts', data }); return data; },
   
-  // 🐛 BUG FIXED: Replaced "cash" with 'cash' so PostgreSQL reads it properly
   async getCashSalesForShift(employeeId: string, startTime: string) { 
-    const r = await sqlRequest({ action: 'QUERY', query: "SELECT total FROM orders WHERE employee_id = ? AND payment_method = 'cash' AND created_at >= ?", params: [employeeId, startTime] }); 
+    const r = await sqlRequest({ action: 'QUERY', query: "SELECT total FROM orders WHERE employee_id = $1 AND payment_method = 'cash' AND created_at >= $2", params: [employeeId, startTime] }); 
     return r.reduce((sum: number, o: any) => sum + parseFloat(o.total), 0); 
   },
 
-  // ✨ NEW: Gets a breakdown of ALL sales for the Z-Reading Print
   async getShiftSalesBreakdown(employeeId: string, startTime: string) {
-    const r = await sqlRequest({ action: 'QUERY', query: "SELECT payment_method, total FROM orders WHERE employee_id = ? AND created_at >= ?", params: [employeeId, startTime] });
+    const r = await sqlRequest({ action: 'QUERY', query: "SELECT payment_method, total FROM orders WHERE employee_id = $1 AND created_at >= $2", params: [employeeId, startTime] });
     const breakdown = { total: 0, cash: 0, card: 0, online: 0 };
     r.forEach((o: any) => {
       const amount = parseFloat(o.total);
@@ -117,5 +124,56 @@ export const ApiService = {
       orders: orders.map((o: any) => ({ ...o, total: parseFloat(o.total), profiles: { email: o.email, full_name: o.full_name } })),
       shifts: shifts.map((s: any) => ({ ...s, starting_cash: parseFloat(s.starting_cash), ending_cash: s.ending_cash ? parseFloat(s.ending_cash) : null, expected_cash: s.expected_cash ? parseFloat(s.expected_cash) : null, profiles: { email: s.email, full_name: s.full_name } })),
     };
+  },
+
+  // ✨ NEW: TELEGRAM & ACTIVEPIECES DAILY REPORT GENERATOR
+  async sendDailyReportToTelegram() {
+    const settings = await this.getSettings();
+    const webhookUrl = settings.activepieces_webhook_url;
+    if (!webhookUrl) throw new Error("ActivePieces Webhook URL is not configured in System Settings.");
+
+    // Calculate exactly when the current 24 hour business day started and ends
+    const [hours, minutes] = (settings.business_day_start || '08:00').split(':').map(Number);
+    const now = new Date();
+    let bizStart = new Date(now); bizStart.setHours(hours, minutes, 0, 0);
+    if (now < bizStart) bizStart.setDate(bizStart.getDate() - 1);
+    let bizEnd = new Date(bizStart); bizEnd.setDate(bizEnd.getDate() + 1);
+
+    // Fetch all shifts and orders within this 24-hour block
+    const shifts = await sqlRequest({ action: 'QUERY', query: 'SELECT s.*, p.full_name FROM shifts s LEFT JOIN profiles p ON s.employee_id = p.id WHERE s.start_time >= $1 AND s.start_time < $2 ORDER BY s.start_time ASC', params: [bizStart.toISOString(), bizEnd.toISOString()] });
+    const orders = await sqlRequest({ action: 'QUERY', query: 'SELECT * FROM orders WHERE created_at >= $1 AND created_at < $2', params: [bizStart.toISOString(), bizEnd.toISOString()] });
+
+    let totalSales = 0, totalCash = 0, totalCard = 0;
+    orders.forEach((o: any) => {
+      const amount = parseFloat(o.total);
+      totalSales += amount;
+      if (o.payment_method === 'cash') totalCash += amount;
+      else totalCard += amount;
+    });
+
+    let reportText = `📊 *Daily POS Summary*\n📅 ${bizStart.toDateString()}\n\n`;
+    reportText += `💰 *Total Sales:* ₱${totalSales.toFixed(2)}\n`;
+    reportText += `💵 *Cash Sales:* ₱${totalCash.toFixed(2)}\n💳 *Card/Online:* ₱${totalCard.toFixed(2)}\n\n`;
+    reportText += `👥 *Shift Breakdown (${shifts.length} shifts today):*\n`;
+    
+    shifts.forEach((s: any, i: number) => {
+      const status = s.end_time ? "Closed" : "🟢 Active";
+      const variance = s.end_time ? `Variance: ₱${(parseFloat(s.ending_cash) - parseFloat(s.expected_cash)).toFixed(2)}` : 'Wait End of Shift';
+      reportText += `\n*Shift ${i + 1}:* ${s.full_name || 'Staff'}\n`;
+      reportText += `   Status: ${status}\n`;
+      reportText += `   ${variance}\n`;
+    });
+
+    // Send to ActivePieces
+    const payload = { text: reportText, date: bizStart.toISOString(), total_sales: totalSales, shifts_count: shifts.length };
+    
+    const res = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) throw new Error("Failed to trigger ActivePieces webhook.");
+    return true;
   }
 };

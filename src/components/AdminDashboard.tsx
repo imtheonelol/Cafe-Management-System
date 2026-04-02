@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import { DollarSign, ReceiptText, Filter, ClipboardCheck, ShoppingBag, Search, CalendarDays } from 'lucide-react';
+import { ReceiptText, Filter, ClipboardCheck, ShoppingBag, Search, CalendarDays, Send } from 'lucide-react';
 import { ApiService } from '../services/api';
 
 export function AdminDashboard({ profile }: any) {
@@ -7,11 +7,11 @@ export function AdminDashboard({ profile }: any) {
   const [orders, setOrders] = useState<any[]>([]);
   const [shifts, setShifts] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [timeFilter, setTimeFilter] = useState('today'); // Default to today!
+  const [timeFilter, setTimeFilter] = useState('today');
+  const [sendingReport, setSendingReport] = useState(false);
 
   const fetchData = async () => {
     const data = await ApiService.getAdminDashboardData();
-    // If it's just a cashier, ONLY show them their own sales!
     if (profile?.role === 'employee') {
       setOrders(data.orders.filter((o:any) => o.employee_id === profile.id));
       setShifts(data.shifts.filter((s:any) => s.employee_id === profile.id));
@@ -48,11 +48,33 @@ export function AdminDashboard({ profile }: any) {
 
   const stats = { totalSales: filteredOrders.reduce((acc, curr) => acc + curr.total, 0), totalOrders: filteredOrders.length };
 
+  const handleSendTelegramReport = async () => {
+    if(!confirm("Are you sure you want to trigger the ActivePieces Webhook for today's summary?")) return;
+    try {
+      setSendingReport(true);
+      await ApiService.sendDailyReportToTelegram();
+      alert("✅ Report Successfully Sent to ActivePieces!");
+    } catch (err: any) {
+      alert("❌ Error: " + err.message);
+    } finally {
+      setSendingReport(false);
+    }
+  };
+
   return (
     <div className="pb-24 p-6">
-      <div className="max-w-7xl mx-auto mb-6 flex gap-4 border-b border-gray-200 pb-4">
-        <button onClick={() => setActiveTab('transactions')} className={`flex items-center gap-2 px-6 py-3 rounded-lg font-bold transition-colors ${activeTab === 'transactions' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100 border'}`}><ShoppingBag size={20} /> Transactions</button>
-        <button onClick={() => setActiveTab('audits')} className={`flex items-center gap-2 px-6 py-3 rounded-lg font-bold transition-colors ${activeTab === 'audits' ? 'bg-purple-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100 border'}`}><ClipboardCheck size={20} /> Shift Audits</button>
+      <div className="max-w-7xl mx-auto mb-6 flex gap-4 border-b border-gray-200 pb-4 justify-between items-center">
+        <div className="flex gap-4">
+          <button onClick={() => setActiveTab('transactions')} className={`flex items-center gap-2 px-6 py-3 rounded-lg font-bold transition-colors ${activeTab === 'transactions' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100 border'}`}><ShoppingBag size={20} /> Transactions</button>
+          <button onClick={() => setActiveTab('audits')} className={`flex items-center gap-2 px-6 py-3 rounded-lg font-bold transition-colors ${activeTab === 'audits' ? 'bg-purple-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100 border'}`}><ClipboardCheck size={20} /> Shift Audits</button>
+        </div>
+        
+        {/* ✨ NEW: Telegram Report Button for Admins */}
+        {profile?.role === 'admin' && (
+          <button onClick={handleSendTelegramReport} disabled={sendingReport} className="flex items-center gap-2 px-6 py-3 bg-[#0088cc] hover:bg-[#0077b3] text-white rounded-lg font-bold shadow-md disabled:opacity-50">
+            <Send size={20} /> {sendingReport ? 'Sending...' : 'Send Telegram Report'}
+          </button>
+        )}
       </div>
 
       <div className="max-w-7xl mx-auto mb-6 bg-white p-4 rounded-xl shadow-sm border flex flex-wrap gap-4 items-center">
