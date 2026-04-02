@@ -1,3 +1,41 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* 🧾 THERMAL RECEIPT PRINT SETTINGS */
+@media print {
+  @page {
+    margin: 0;
+    size: 80mm auto; /* Standard 80mm POS thermal roll */
+  }
+  
+  /* Hide everything on the screen by default */
+  body * {
+    visibility: hidden;
+  }
+  
+  /* Only show elements with the print-section class */
+  .print-section, .print-section * {
+    visibility: visible;
+  }
+  
+  .print-section {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 80mm;
+    padding: 3mm;
+    font-family: 'Courier New', Courier, monospace !important;
+    color: black !important;
+    font-size: 12px !important;
+    background: white !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  /* Force dashed lines to print correctly */
+  .print-dashed {
+    border-bottom: 1px dashed black !important;
+    margin: 4px 0 !important;
+  }
+}

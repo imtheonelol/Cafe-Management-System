@@ -2,9 +2,12 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { Client, Pool } from 'pg';
 
+// ==========================================
 const PG_PASSWORD = 'password';
 const DB_HOST = '127.0.0.1';
 const DB_NAME = 'cafe_pos';
+// ==========================================
+
 const DEFAULT_DB_URL = `postgres://postgres:${PG_PASSWORD}@${DB_HOST}:5432/postgres`;
 const DB_URL = `postgres://postgres:${PG_PASSWORD}@${DB_HOST}:5432/${DB_NAME}`;
 
@@ -94,7 +97,6 @@ function postgresDatabasePlugin() {
         `);
       }
     } catch (error: any) {
-      console.error("\n❌ [DATABASE ERROR]:", error.message, "\n");
       dbConnectionError = error.message; 
     }
   };
@@ -147,5 +149,9 @@ function postgresDatabasePlugin() {
 
 export default defineConfig({
   plugins: [react(), postgresDatabasePlugin()],
-  optimizeDeps: { exclude: ['lucide-react'] }
+  optimizeDeps: { exclude: ['lucide-react'] },
+  server: { 
+    open: true, // 👈 THIS WILL AUTOMATICALLY OPEN THE BROWSER
+    watch: { ignored: ['**/cafe_management.db', '**/cafe_management.db-journal'] } 
+  }
 });

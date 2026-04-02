@@ -24,7 +24,15 @@ function LoginForm({ title, role, icon = <Coffee className="mx-auto h-12 w-12 te
     setError(null);
     try {
       await ApiService.login(email, password);
-      if (role === 'admin') navigate('/admin/dashboard');
+      
+      // 🛑 FORCE FULLSCREEN POS MODE
+      try {
+        if (document.documentElement.requestFullscreen) {
+          await document.documentElement.requestFullscreen();
+        }
+      } catch (err) { console.warn("Fullscreen API blocked by browser."); }
+
+      if (role === 'admin') navigate('/dashboard');
       else navigate('/pos');
     } catch (err: any) {
       setError(err.message);
@@ -57,7 +65,7 @@ function LoginForm({ title, role, icon = <Coffee className="mx-auto h-12 w-12 te
               </div>
             </div>
             <button type="submit" disabled={loading} className={`w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white ${role === 'admin' ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'} focus:outline-none disabled:opacity-50`}>
-              {loading ? 'Authenticating...' : 'Sign in'}
+              {loading ? 'Authenticating...' : 'Sign In & Start System'}
             </button>
           </form>
         </div>

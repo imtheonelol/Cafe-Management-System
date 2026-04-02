@@ -34,30 +34,45 @@ export function EndShiftModal({ isOpen, onClose, shift, employeeId, onConfirm }:
 
   if (step === 'receipt') {
     return (
-      <div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50 p-4 print:bg-white print:p-0">
-        <div className="bg-white rounded-xl max-w-md w-full p-6 print:shadow-none print:w-full print:max-w-none text-center">
-          <h2 className="text-2xl font-bold mb-2">Z-READING (END OF SHIFT)</h2>
-          <p className="text-gray-600 mb-6 border-b pb-4">Date: {new Date().toLocaleString()}</p>
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 print:p-0 print:bg-transparent">
+        <div className="bg-white rounded-xl max-w-md w-full p-6 print:shadow-none print:w-full print:max-w-none text-center print-section">
+          
+          <h2 className="text-2xl print:text-xl font-bold mb-2">Z-READING</h2>
+          <p className="text-gray-600 print:text-xs mb-4">Date: {new Date().toLocaleString()}</p>
+          
+          <div className="print-dashed my-2 border-b border-gray-200 print:border-none"></div>
 
-          <div className="text-left space-y-2 mb-6 text-sm border-b pb-4">
-            <h3 className="font-bold text-lg mb-2">Sales Summary</h3>
+          <div className="text-left space-y-1 mb-4 text-sm print:text-xs">
+            <h3 className="font-bold print:text-sm mb-1">Sales Summary</h3>
             <div className="flex justify-between"><span>Cash Sales:</span> <span>₱{salesBreakdown.cash.toFixed(2)}</span></div>
             <div className="flex justify-between"><span>Card Sales:</span> <span>₱{salesBreakdown.card.toFixed(2)}</span></div>
             <div className="flex justify-between"><span>Online/Other:</span> <span>₱{salesBreakdown.online.toFixed(2)}</span></div>
-            <div className="flex justify-between font-bold pt-2 border-t mt-2 text-lg"><span>Total Shift Sales:</span> <span>₱{salesBreakdown.total.toFixed(2)}</span></div>
+            <div className="flex justify-between font-bold pt-2 mt-2"><span>Total Shift Sales:</span> <span>₱{salesBreakdown.total.toFixed(2)}</span></div>
           </div>
+          
+          <div className="print-dashed my-2 border-b border-gray-200 print:border-none"></div>
 
-          <div className="text-left space-y-3 mb-6 text-lg">
-            <h3 className="font-bold text-lg mb-2">Cash Drawer Audit</h3>
-            <div className="flex justify-between text-gray-600"><span>Starting Cash:</span> <span>₱{parseFloat(shift.starting_cash).toFixed(2)}</span></div>
-            <div className="flex justify-between text-gray-600"><span>Cash Sales:</span> <span>+ ₱{salesBreakdown.cash.toFixed(2)}</span></div>
-            <div className="flex justify-between font-bold pt-2 border-t"><span>Expected Drawer:</span> <span>₱{expectedCash.toFixed(2)}</span></div>
-            <div className="flex justify-between font-bold pt-2 border-t"><span>Actual Drawer:</span> <span>₱{parseFloat(actualCash).toFixed(2)}</span></div>
-            <div className="flex justify-between font-bold pt-4 border-t-2 border-gray-800 mt-4"><span>Variance:</span> <span className={difference === 0 ? 'text-green-600' : difference > 0 ? 'text-blue-600' : 'text-red-600'}>{difference > 0 ? '+' : ''}₱{difference.toFixed(2)}</span></div>
+          <div className="text-left space-y-1 mb-4 text-sm print:text-xs">
+            <h3 className="font-bold print:text-sm mb-1">Drawer Audit</h3>
+            <div className="flex justify-between"><span>Starting Cash:</span> <span>₱{parseFloat(shift.starting_cash).toFixed(2)}</span></div>
+            <div className="flex justify-between"><span>Cash Sales:</span> <span>+ ₱{salesBreakdown.cash.toFixed(2)}</span></div>
+            <div className="flex justify-between font-bold pt-2 mt-1 border-t"><span>Expected:</span> <span>₱{expectedCash.toFixed(2)}</span></div>
+            <div className="flex justify-between font-bold pt-1"><span>Actual:</span> <span>₱{parseFloat(actualCash).toFixed(2)}</span></div>
+            <div className="flex justify-between font-bold pt-2 mt-2">
+              <span>Variance:</span> 
+              <span>{difference > 0 ? '+' : ''}₱{difference.toFixed(2)}</span>
+            </div>
           </div>
-          <p className="text-sm text-gray-500 mt-8 italic">Audit Complete. Drawer is secured.</p>
+          
+          <div className="print-dashed my-4 border-b border-gray-200 print:border-none"></div>
+          
+          <p className="text-sm print:text-[10px] text-gray-500 mt-4 italic">Audit Complete. Drawer Secured.</p>
+          
           <div className="print:hidden mt-8 pt-6 border-t border-gray-200">
-            <button onClick={onConfirm} className="w-full py-3 bg-red-600 text-white rounded-lg font-bold hover:bg-red-700">Close Screen & Logout</button>
+            <button onClick={() => {
+               if (document.fullscreenElement) { document.exitFullscreen().catch(()=>{}); }
+               onConfirm();
+            }} className="w-full py-3 bg-red-600 text-white rounded-lg font-bold hover:bg-red-700">Close Screen & Logout</button>
           </div>
         </div>
       </div>
