@@ -6,12 +6,16 @@ export function EndShiftModal({ isOpen, onClose, shift, employeeId, onConfirm }:
   const [step, setStep] = useState<'audit' | 'receipt'>('audit');
   const [actualCash, setActualCash] = useState('');
   const [expectedCash, setExpectedCash] = useState(0);
-  const [cashSales, setCashSales] = useState(0);
+  const [salesBreakdown, setSalesBreakdown] = useState({ total: 0, cash: 0, card: 0, online: 0 });
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (isOpen && shift) {
-      ApiService.getCashSalesForShift(employeeId, shift.start_time).then(sales => { setCashSales(sales); setExpectedCash(parseFloat(shift.starting_cash) + sales); setStep('audit'); });
+      ApiService.getShiftSalesBreakdown(employeeId, shift.start_time).then(breakdown => { 
+        setSalesBreakdown(breakdown); 
+        setExpectedCash(parseFloat(shift.starting_cash) + breakdown.cash); 
+        setStep('audit'); 
+      });
     }
   }, [isOpen, shift]);
 
@@ -32,16 +36,26 @@ export function EndShiftModal({ isOpen, onClose, shift, employeeId, onConfirm }:
     return (
       <div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50 p-4 print:bg-white print:p-0">
         <div className="bg-white rounded-xl max-w-md w-full p-6 print:shadow-none print:w-full print:max-w-none text-center">
-          <h2 className="text-2xl font-bold mb-2">Shift Audit Receipt</h2>
+          <h2 className="text-2xl font-bold mb-2">Z-READING (END OF SHIFT)</h2>
           <p className="text-gray-600 mb-6 border-b pb-4">Date: {new Date().toLocaleString()}</p>
+
+          <div className="text-left space-y-2 mb-6 text-sm border-b pb-4">
+            <h3 className="font-bold text-lg mb-2">Sales Summary</h3>
+            <div className="flex justify-between"><span>Cash Sales:</span> <span>₱{salesBreakdown.cash.toFixed(2)}</span></div>
+            <div className="flex justify-between"><span>Card Sales:</span> <span>₱{salesBreakdown.card.toFixed(2)}</span></div>
+            <div className="flex justify-between"><span>Online/Other:</span> <span>₱{salesBreakdown.online.toFixed(2)}</span></div>
+            <div className="flex justify-between font-bold pt-2 border-t mt-2 text-lg"><span>Total Shift Sales:</span> <span>₱{salesBreakdown.total.toFixed(2)}</span></div>
+          </div>
+
           <div className="text-left space-y-3 mb-6 text-lg">
+            <h3 className="font-bold text-lg mb-2">Cash Drawer Audit</h3>
             <div className="flex justify-between text-gray-600"><span>Starting Cash:</span> <span>₱{parseFloat(shift.starting_cash).toFixed(2)}</span></div>
-            <div className="flex justify-between text-gray-600"><span>Cash Sales:</span> <span>+ ₱{cashSales.toFixed(2)}</span></div>
-            <div className="flex justify-between font-bold pt-2 border-t"><span>Expected:</span> <span>₱{expectedCash.toFixed(2)}</span></div>
-            <div className="flex justify-between font-bold pt-2 border-t"><span>Actual:</span> <span>₱{parseFloat(actualCash).toFixed(2)}</span></div>
+            <div className="flex justify-between text-gray-600"><span>Cash Sales:</span> <span>+ ₱{salesBreakdown.cash.toFixed(2)}</span></div>
+            <div className="flex justify-between font-bold pt-2 border-t"><span>Expected Drawer:</span> <span>₱{expectedCash.toFixed(2)}</span></div>
+            <div className="flex justify-between font-bold pt-2 border-t"><span>Actual Drawer:</span> <span>₱{parseFloat(actualCash).toFixed(2)}</span></div>
             <div className="flex justify-between font-bold pt-4 border-t-2 border-gray-800 mt-4"><span>Variance:</span> <span className={difference === 0 ? 'text-green-600' : difference > 0 ? 'text-blue-600' : 'text-red-600'}>{difference > 0 ? '+' : ''}₱{difference.toFixed(2)}</span></div>
           </div>
-          <p className="text-sm text-gray-500 mt-8 italic">Audit Complete.</p>
+          <p className="text-sm text-gray-500 mt-8 italic">Audit Complete. Drawer is secured.</p>
           <div className="print:hidden mt-8 pt-6 border-t border-gray-200">
             <button onClick={onConfirm} className="w-full py-3 bg-red-600 text-white rounded-lg font-bold hover:bg-red-700">Close Screen & Logout</button>
           </div>
@@ -61,7 +75,7 @@ export function EndShiftModal({ isOpen, onClose, shift, employeeId, onConfirm }:
         </div>
         <div className="bg-gray-50 p-4 rounded-lg mb-6 space-y-2 text-sm border">
           <div className="flex justify-between"><span>Starting Cash:</span> <span className="font-semibold">₱{parseFloat(shift.starting_cash).toFixed(2)}</span></div>
-          <div className="flex justify-between"><span>Cash Sales:</span> <span className="font-semibold text-green-600">+ ₱{cashSales.toFixed(2)}</span></div>
+          <div className="flex justify-between"><span>Cash Sales:</span> <span className="font-semibold text-green-600">+ ₱{salesBreakdown.cash.toFixed(2)}</span></div>
           <div className="border-t pt-2 flex justify-between font-bold text-lg"><span>Expected in Drawer:</span> <span className="text-blue-600">₱{expectedCash.toFixed(2)}</span></div>
         </div>
         <form onSubmit={handleEndShift}>

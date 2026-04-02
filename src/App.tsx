@@ -31,7 +31,8 @@ function POSView({ session, profile }: { session: any, profile: Profile }) {
   const [currentOrder, setCurrentOrder] = useState<Order | null>(null);
   const [currentOrderItems, setCurrentOrderItems] = useState<(OrderItem & { product: Product })[]>([]);
   const [activeShift, setActiveShift] = useState<Shift | null>(null);
-  const [liveCashSales, setLiveCashSales] = useState(0);
+  
+  const [salesBreakdown, setSalesBreakdown] = useState({ total: 0, cash: 0, card: 0, online: 0 });
 
   const loadData = () => {
     ApiService.getCategories().then(setCategories);
@@ -42,12 +43,12 @@ function POSView({ session, profile }: { session: any, profile: Profile }) {
 
   useEffect(() => { loadData(); }, [session]);
 
-  // LIVE CASH TRACKER
+  // LIVE CASH & SALES TRACKER
   useEffect(() => {
     const fetchSales = async () => {
       if (activeShift) {
-        const sales = await ApiService.getCashSalesForShift(session.user.id, activeShift.start_time);
-        setLiveCashSales(sales);
+        const breakdown = await ApiService.getShiftSalesBreakdown(session.user.id, activeShift.start_time);
+        setSalesBreakdown(breakdown);
       }
     };
     fetchSales();
@@ -96,8 +97,8 @@ function POSView({ session, profile }: { session: any, profile: Profile }) {
           <div className="flex items-center gap-4">
             {/* LIVE DRAWER TRACKER */}
             <div className="bg-green-50 text-green-900 px-4 py-2 rounded-lg text-right border border-green-200">
-               <div className="text-xs font-semibold">Starting: ₱{activeShift ? parseFloat(activeShift.starting_cash as any).toFixed(2) : '0.00'} | Cash Sales: ₱{liveCashSales.toFixed(2)}</div>
-               <div className="text-sm font-bold">Expected Drawer: ₱{((activeShift ? parseFloat(activeShift.starting_cash as any) : 0) + liveCashSales).toFixed(2)}</div>
+               <div className="text-xs font-semibold">Start: ₱{activeShift ? parseFloat(activeShift.starting_cash as any).toFixed(2) : '0.00'} | Cash Sales: ₱{salesBreakdown.cash.toFixed(2)}</div>
+               <div className="text-sm font-bold">Expected Drawer: ₱{((activeShift ? parseFloat(activeShift.starting_cash as any) : 0) + salesBreakdown.cash).toFixed(2)}</div>
             </div>
 
             <button onClick={() => setShowBackOffice(true)} className="flex items-center gap-2 px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 font-bold"><Package size={18}/> Inventory</button>

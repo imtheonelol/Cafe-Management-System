@@ -51,7 +51,7 @@ export const ApiService = {
 
   async createOrder(employeeId: string, cartItems: CartItem[], total: number, taxAmount: number, discountType: string, paymentMethod: string, receiptNumber: string) {
     const orderId = generateId();
-    const orderData = { id: orderId, order_number: `ORD-${Date.now()}`, total, tax_amount: taxAmount, discount_type: discountType, payment_method: paymentMethod, payment_status: 'completed', receipt_number: receiptNumber, employee_id: employeeId, created_at: new Date().toISOString() };
+    const orderData = { id: orderId, order_number: `ORD-${Date.now()}`, total, tax_amount: taxAmount, discount_type: discountType, payment_method: paymentMethod, payment_status: 'completed', fulfillment_status: 'pending', receipt_number: receiptNumber, employee_id: employeeId, created_at: new Date().toISOString() };
     await sqlRequest({ action: 'INSERT', table: 'orders', data: orderData });
 
     for (const item of cartItems) {
@@ -88,9 +88,24 @@ export const ApiService = {
   async getLastShift() { const r = await sqlRequest({ action: 'QUERY', query: 'SELECT * FROM shifts WHERE end_time IS NOT NULL ORDER BY end_time DESC LIMIT 1' }); return r[0] ? {...r[0], ending_cash: parseFloat(r[0].ending_cash)} : null; },
   async startShift(employeeId: string, startingCash: number) { const data = { id: generateId(), employee_id: employeeId, starting_cash: startingCash, start_time: new Date().toISOString() }; await sqlRequest({ action: 'INSERT', table: 'shifts', data }); return data; },
   
+  // 🐛 BUG FIXED: Replaced "cash" with 'cash' so PostgreSQL reads it properly
   async getCashSalesForShift(employeeId: string, startTime: string) { 
-    const r = await sqlRequest({ action: 'QUERY', query: 'SELECT total FROM orders WHERE employee_id = ? AND payment_method = "cash" AND created_at >= ?', params: [employeeId, startTime] }); 
+    const r = await sqlRequest({ action: 'QUERY', query: "SELECT total FROM orders WHERE employee_id = ? AND payment_method = 'cash' AND created_at >= ?", params: [employeeId, startTime] }); 
     return r.reduce((sum: number, o: any) => sum + parseFloat(o.total), 0); 
+  },
+
+  // ✨ NEW: Gets a breakdown of ALL sales for the Z-Reading Print
+  async getShiftSalesBreakdown(employeeId: string, startTime: string) {
+    const r = await sqlRequest({ action: 'QUERY', query: "SELECT payment_method, total FROM orders WHERE employee_id = ? AND created_at >= ?", params: [employeeId, startTime] });
+    const breakdown = { total: 0, cash: 0, card: 0, online: 0 };
+    r.forEach((o: any) => {
+      const amount = parseFloat(o.total);
+      breakdown.total += amount;
+      if (o.payment_method === 'cash') breakdown.cash += amount;
+      else if (o.payment_method === 'card') breakdown.card += amount;
+      else if (o.payment_method === 'online') breakdown.online += amount;
+    });
+    return breakdown;
   },
   
   async endShift(shiftId: string, endingCash: number, expectedCash: number) { await sqlRequest({ action: 'UPDATE', table: 'shifts', id: shiftId, data: { ending_cash: endingCash, expected_cash: expectedCash, end_time: new Date().toISOString() }}); },
