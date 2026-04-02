@@ -10,7 +10,7 @@ export function BackOffice({ isOpen, onClose, products, categories, profiles, pr
   const [newIngredient, setNewIngredient] = useState({ name: '', stock: '', unit: 'kg' });
   const [dbStatus, setDbStatus] = useState('Checking...');
   const [bizStartTime, setBizStartTime] = useState('08:00');
-  const [defaultFloat, setDefaultFloat] = useState('1500');
+  const [defaultFloat, setDefaultFloat] = useState('800'); // 👈 Default to 800
 
   const [editingProduct, setEditingProduct] = useState<any>(null);
   const [productData, setProductData] = useState({ name: '', description: '', price: '', category_id: '', image_url: '', stock: '100', is_available: true });
@@ -24,7 +24,7 @@ export function BackOffice({ isOpen, onClose, products, categories, profiles, pr
       ApiService.getIngredients().then(setIngredients);
       ApiService.getSettings().then(s => {
          setBizStartTime(s.business_day_start || '08:00');
-         setDefaultFloat(s.default_floating_cash || '1500');
+         setDefaultFloat(s.default_floating_cash || '800');
       });
       ApiService.checkConnection().then(ok => setDbStatus(ok ? 'Connected' : 'Disconnected'));
     }

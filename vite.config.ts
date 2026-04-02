@@ -57,18 +57,15 @@ function postgresDatabasePlugin() {
         await pool.query(`INSERT INTO profiles (id, email, password, full_name, role, created_at) VALUES ('1', 'admin@cafe.com', 'password', 'Admin Boss', 'admin', CURRENT_TIMESTAMP)`);
         await pool.query(`INSERT INTO profiles (id, email, password, full_name, role, created_at) VALUES ('2', 'staff@cafe.com', 'password', 'Friendly Barista', 'employee', CURRENT_TIMESTAMP)`);
         
-        // ✨ Added default_floating_cash to settings
-        await pool.query(`INSERT INTO settings (key, value) VALUES ('business_day_start', '08:00'), ('default_floating_cash', '1500')`);
+        // ✨ Set Default Float to 800 PHP
+        await pool.query(`INSERT INTO settings (key, value) VALUES ('business_day_start', '08:00'), ('default_floating_cash', '800')`);
         
         await pool.query(`INSERT INTO categories (id, name, created_at) VALUES ('c1', 'Coffee', CURRENT_TIMESTAMP), ('c2', 'Milk Tea', CURRENT_TIMESTAMP), ('c3', 'Pastries', CURRENT_TIMESTAMP)`);
 
         await pool.query(`INSERT INTO ingredients (id, name, stock, unit, created_at) VALUES 
-          ('i1', 'Espresso Beans', 5000, 'g', CURRENT_TIMESTAMP),
-          ('i2', 'Whole Milk', 10000, 'ml', CURRENT_TIMESTAMP),
-          ('i3', 'Caramel Syrup', 2000, 'ml', CURRENT_TIMESTAMP),
-          ('i4', 'Plastic Cup 16oz', 500, 'pcs', CURRENT_TIMESTAMP),
-          ('i5', 'Black Tea Leaves', 2000, 'g', CURRENT_TIMESTAMP),
-          ('i6', 'Tapioca Pearls', 3000, 'g', CURRENT_TIMESTAMP),
+          ('i1', 'Espresso Beans', 5000, 'g', CURRENT_TIMESTAMP), ('i2', 'Whole Milk', 10000, 'ml', CURRENT_TIMESTAMP),
+          ('i3', 'Caramel Syrup', 2000, 'ml', CURRENT_TIMESTAMP), ('i4', 'Plastic Cup 16oz', 500, 'pcs', CURRENT_TIMESTAMP),
+          ('i5', 'Black Tea Leaves', 2000, 'g', CURRENT_TIMESTAMP), ('i6', 'Tapioca Pearls', 3000, 'g', CURRENT_TIMESTAMP),
           ('i7', 'Brown Sugar Syrup', 2000, 'ml', CURRENT_TIMESTAMP)
         `);
 
