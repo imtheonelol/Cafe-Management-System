@@ -33,7 +33,6 @@ export const ApiService = {
 
   async getSettings() { const rows = await sqlRequest({ action: 'QUERY', query: 'SELECT * FROM settings' }); return rows.reduce((acc: any, row: any) => ({ ...acc, [row.key]: row.value }), {}); },
   
-  // ✨ FIX: Allow dynamic saving of new settings like the webhook URL
   async updateSetting(key: string, value: string) { 
     const existing = await sqlRequest({ action: 'QUERY', query: 'SELECT * FROM settings WHERE key = $1', params: [key] });
     if (existing.length > 0) {
@@ -126,20 +125,18 @@ export const ApiService = {
     };
   },
 
-  // ✨ NEW: TELEGRAM & ACTIVEPIECES DAILY REPORT GENERATOR
+  // ✨ BULLETPROOF TELEGRAM REPORT (Strictly scopes current 24H boundary)
   async sendDailyReportToTelegram() {
     const settings = await this.getSettings();
     const webhookUrl = settings.activepieces_webhook_url;
     if (!webhookUrl) throw new Error("ActivePieces Webhook URL is not configured in System Settings.");
 
-    // Calculate exactly when the current 24 hour business day started and ends
     const [hours, minutes] = (settings.business_day_start || '08:00').split(':').map(Number);
     const now = new Date();
     let bizStart = new Date(now); bizStart.setHours(hours, minutes, 0, 0);
     if (now < bizStart) bizStart.setDate(bizStart.getDate() - 1);
     let bizEnd = new Date(bizStart); bizEnd.setDate(bizEnd.getDate() + 1);
 
-    // Fetch all shifts and orders within this 24-hour block
     const shifts = await sqlRequest({ action: 'QUERY', query: 'SELECT s.*, p.full_name FROM shifts s LEFT JOIN profiles p ON s.employee_id = p.id WHERE s.start_time >= $1 AND s.start_time < $2 ORDER BY s.start_time ASC', params: [bizStart.toISOString(), bizEnd.toISOString()] });
     const orders = await sqlRequest({ action: 'QUERY', query: 'SELECT * FROM orders WHERE created_at >= $1 AND created_at < $2', params: [bizStart.toISOString(), bizEnd.toISOString()] });
 
@@ -151,20 +148,23 @@ export const ApiService = {
       else totalCard += amount;
     });
 
-    let reportText = `📊 *Daily POS Summary*\n📅 ${bizStart.toDateString()}\n\n`;
+    const bizDateStr = bizStart.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+
+    let reportText = `📊 *DAILY POS REPORT*\n📅 Business Day: ${bizDateStr}\n\n`;
     reportText += `💰 *Total Sales:* ₱${totalSales.toFixed(2)}\n`;
-    reportText += `💵 *Cash Sales:* ₱${totalCash.toFixed(2)}\n💳 *Card/Online:* ₱${totalCard.toFixed(2)}\n\n`;
-    reportText += `👥 *Shift Breakdown (${shifts.length} shifts today):*\n`;
+    reportText += `💵 *Cash:* ₱${totalCash.toFixed(2)}\n💳 *Card/Other:* ₱${totalCard.toFixed(2)}\n\n`;
+    reportText += `👥 *Shift Log (${shifts.length} shifts recorded):*\n`;
     
     shifts.forEach((s: any, i: number) => {
       const status = s.end_time ? "Closed" : "🟢 Active";
-      const variance = s.end_time ? `Variance: ₱${(parseFloat(s.ending_cash) - parseFloat(s.expected_cash)).toFixed(2)}` : 'Wait End of Shift';
+      const varianceVal = s.end_time ? (parseFloat(s.ending_cash) - parseFloat(s.expected_cash)) : null;
+      const varianceStr = varianceVal !== null ? `Variance: ${varianceVal > 0 ? '+' : ''}₱${varianceVal.toFixed(2)}` : 'Waiting for count...';
+      
       reportText += `\n*Shift ${i + 1}:* ${s.full_name || 'Staff'}\n`;
       reportText += `   Status: ${status}\n`;
-      reportText += `   ${variance}\n`;
+      reportText += `   ${varianceStr}\n`;
     });
 
-    // Send to ActivePieces
     const payload = { text: reportText, date: bizStart.toISOString(), total_sales: totalSales, shifts_count: shifts.length };
     
     const res = await fetch(webhookUrl, {
@@ -173,7 +173,7 @@ export const ApiService = {
       body: JSON.stringify(payload)
     });
 
-    if (!res.ok) throw new Error("Failed to trigger ActivePieces webhook.");
+    if (!res.ok) throw new Error("Failed to trigger ActivePieces webhook. Ensure URL is correct.");
     return true;
   }
 };

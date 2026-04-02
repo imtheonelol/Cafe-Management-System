@@ -43,7 +43,6 @@ function POSView({ session, profile }: { session: any, profile: Profile }) {
 
   useEffect(() => { loadData(); }, [session]);
 
-  // LIVE CASH & SALES TRACKER
   useEffect(() => {
     const fetchSales = async () => {
       if (activeShift) {
@@ -95,14 +94,13 @@ function POSView({ session, profile }: { session: any, profile: Profile }) {
           </div>
           
           <div className="flex items-center gap-4">
-            {/* LIVE DRAWER TRACKER */}
             <div className="bg-green-50 text-green-900 px-4 py-2 rounded-lg text-right border border-green-200">
                <div className="text-xs font-semibold">Start: ₱{activeShift ? parseFloat(activeShift.starting_cash as any).toFixed(2) : '0.00'} | Cash Sales: ₱{salesBreakdown.cash.toFixed(2)}</div>
                <div className="text-sm font-bold">Expected Drawer: ₱{((activeShift ? parseFloat(activeShift.starting_cash as any) : 0) + salesBreakdown.cash).toFixed(2)}</div>
             </div>
 
             <button onClick={() => setShowBackOffice(true)} className="flex items-center gap-2 px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 font-bold"><Package size={18}/> Inventory</button>
-            <button onClick={() => navigate('/dashboard')} className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-bold"><BarChart size={18}/> {profile.role === 'admin' ? 'Admin Dashboard' : 'My Sales'}</button>
+            <button onClick={() => navigate('/dashboard')} className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-bold"><BarChart size={18}/> My Sales</button>
             <button onClick={handleLogoutClick} className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-bold"><LogOut size={18} /> End Shift</button>
           </div>
         </header>
@@ -143,14 +141,16 @@ function DashboardView({ session, profile }: { session: any, profile: Profile })
           <h1 className="text-2xl font-bold">{profile.role === 'admin' ? 'Admin Control Panel' : 'My Sales Report'}</h1>
         </div>
         <div className="flex gap-4">
-          <button onClick={() => navigate('/pos')} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold">Back to POS</button>
+          {/* ✨ Admins can no longer see the Back to POS button! */}
+          {profile.role === 'employee' && (
+             <button onClick={() => navigate('/pos')} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold">Back to POS</button>
+          )}
           <button onClick={executeLogout} className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:text-red-600 font-semibold"><LogOut size={20} /> Logout</button>
         </div>
       </header>
       
       <AdminDashboard profile={profile} />
 
-      {/* ✨ Restored System Config Button for Admins! */}
       {profile.role === 'admin' && (
         <button onClick={() => setShowBackOffice(true)} className="fixed bottom-8 right-8 flex items-center gap-2 px-6 py-3 bg-gray-900 text-white rounded-full shadow-lg hover:bg-gray-800 font-bold z-40">
           <Settings size={20} /> System Config
@@ -212,8 +212,8 @@ function AppContent() {
       <Route path="/admin" element={!session ? <AdminLogin /> : (profile?.role === 'admin' ? <Navigate to="/dashboard" /> : <Navigate to="/pos" />)} />
       <Route path="/dashboard" element={!session ? <Navigate to="/login" /> : <DashboardView session={session} profile={profile} />} />
       
-      {/* ✨ Allowed Admins to access the POS instead of locking them out! */}
-      <Route path="/pos" element={!session ? <Navigate to="/login" /> : <POSView session={session} profile={profile} />} />
+      {/* ✨ Admins are permanently blocked from POS. If they try, they go straight back to Dashboard! */}
+      <Route path="/pos" element={!session ? <Navigate to="/login" /> : profile?.role === 'admin' ? <Navigate to="/dashboard" /> : <POSView session={session} profile={profile} />} />
     </Routes>
   );
 }
