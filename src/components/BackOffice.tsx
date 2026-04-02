@@ -10,6 +10,7 @@ export function BackOffice({ isOpen, onClose, products, categories, profiles, pr
   const [newIngredient, setNewIngredient] = useState({ name: '', stock: '', unit: 'kg' });
   const [dbStatus, setDbStatus] = useState('Checking...');
   const [bizStartTime, setBizStartTime] = useState('08:00');
+  const [defaultFloat, setDefaultFloat] = useState('1500');
 
   const [editingProduct, setEditingProduct] = useState<any>(null);
   const [productData, setProductData] = useState({ name: '', description: '', price: '', category_id: '', image_url: '', stock: '100', is_available: true });
@@ -21,7 +22,10 @@ export function BackOffice({ isOpen, onClose, products, categories, profiles, pr
   useEffect(() => {
     if (isOpen) {
       ApiService.getIngredients().then(setIngredients);
-      ApiService.getSettings().then(s => setBizStartTime(s.business_day_start || '08:00'));
+      ApiService.getSettings().then(s => {
+         setBizStartTime(s.business_day_start || '08:00');
+         setDefaultFloat(s.default_floating_cash || '1500');
+      });
       ApiService.checkConnection().then(ok => setDbStatus(ok ? 'Connected' : 'Disconnected'));
     }
   }, [isOpen]);
@@ -94,10 +98,19 @@ export function BackOffice({ isOpen, onClose, products, categories, profiles, pr
               <div className="max-w-lg">
                 <h3 className="text-lg font-semibold mb-4">Shift & Business Rules</h3>
                 <div className="bg-gray-50 p-6 border rounded-xl">
+                  
+                  <label className="block font-semibold mb-2 mt-4">Default Register Float (Change Fund)</label>
+                  <p className="text-sm text-gray-600 mb-2">The fixed amount of money left in the drawer for the next shift.</p>
+                  <div className="flex items-center border rounded-lg focus-within:ring-2 focus-within:ring-blue-600 mb-6 px-3 bg-white">
+                    <span className="font-bold text-gray-500">₱</span>
+                    <input type="number" value={defaultFloat} onChange={(e) => setDefaultFloat(e.target.value)} className="w-full px-2 py-2 outline-none" />
+                  </div>
+
                   <label className="block font-semibold mb-2">Start of Business Day</label>
                   <p className="text-sm text-gray-600 mb-4">Any shift left open past this time will automatically close when a user opens the POS, rolling sales to the proper day.</p>
-                  <input type="time" value={bizStartTime} onChange={(e) => setBizStartTime(e.target.value)} className="w-full px-4 py-2 border rounded-lg focus:ring-blue-600 focus:ring-2 mb-4" />
-                  <button onClick={async () => { await ApiService.updateSetting('business_day_start', bizStartTime); alert("Settings Saved!"); }} className="w-full py-3 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700">Save Configuration</button>
+                  <input type="time" value={bizStartTime} onChange={(e) => setBizStartTime(e.target.value)} className="w-full px-4 py-2 border rounded-lg focus:ring-blue-600 focus:ring-2 mb-4 outline-none" />
+                  
+                  <button onClick={async () => { await ApiService.updateSetting('business_day_start', bizStartTime); await ApiService.updateSetting('default_floating_cash', defaultFloat); alert("Settings Saved!"); }} className="w-full py-3 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700">Save Configuration</button>
                 </div>
               </div>
             ) : activeTab === 'products' ? (
@@ -124,7 +137,7 @@ export function BackOffice({ isOpen, onClose, products, categories, profiles, pr
                 <input type="text" placeholder="Name" value={productData.name} onChange={(e) => setProductData({ ...productData, name: e.target.value })} required className="w-full px-4 py-2 border rounded-lg" />
                 <div className="grid grid-cols-2 gap-4">
                   <select value={productData.category_id} onChange={(e) => setProductData({ ...productData, category_id: e.target.value })} required className="w-full px-4 py-2 border rounded-lg"><option value="">Select category...</option>{categories.map((c:any) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
-                  <input type="number" step="0.01" placeholder="Price" value={productData.price} onChange={(e) => setProductData({ ...productData, price: e.target.value })} required className="w-full px-4 py-2 border rounded-lg" />
+                  <div className="flex items-center border rounded-lg focus-within:ring-2 focus-within:ring-blue-600 px-3 bg-white"><span className="font-bold text-gray-500">₱</span><input type="number" step="0.01" placeholder="Price" value={productData.price} onChange={(e) => setProductData({ ...productData, price: e.target.value })} required className="w-full px-2 py-2 outline-none" /></div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <input type="number" placeholder="Stock" value={productData.stock} onChange={(e) => setProductData({ ...productData, stock: e.target.value })} required className="w-full px-4 py-2 border rounded-lg" />

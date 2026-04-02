@@ -3,13 +3,8 @@ import { Coffee, Lock, Mail, ShieldAlert } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { ApiService } from '../services/api';
 
-export function EmployeeLogin() {
-  return <LoginForm title="Employee POS Login" role="employee" />;
-}
-
-export function AdminLogin() {
-  return <LoginForm title="Admin Secure Login" role="admin" icon={<ShieldAlert className="mx-auto h-12 w-12 text-red-600" />} />;
-}
+export function EmployeeLogin() { return <LoginForm title="Employee POS Login" role="employee" />; }
+export function AdminLogin() { return <LoginForm title="Admin Secure Login" role="admin" icon={<ShieldAlert className="mx-auto h-12 w-12 text-red-600" />} />; }
 
 function LoginForm({ title, role, icon = <Coffee className="mx-auto h-12 w-12 text-blue-600" /> }: { title: string, role: string, icon?: React.ReactNode }) {
   const [email, setEmail] = useState(role === 'admin' ? 'admin@cafe.com' : 'staff@cafe.com');
@@ -20,32 +15,18 @@ function LoginForm({ title, role, icon = <Coffee className="mx-auto h-12 w-12 te
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
-    setError(null);
+    setLoading(true); setError(null);
     try {
       await ApiService.login(email, password);
-      
-      // 🛑 FORCE FULLSCREEN POS MODE
-      try {
-        if (document.documentElement.requestFullscreen) {
-          await document.documentElement.requestFullscreen();
-        }
-      } catch (err) { console.warn("Fullscreen API blocked by browser."); }
-
-      if (role === 'admin') navigate('/dashboard');
-      else navigate('/pos');
-    } catch (err: any) {
-      setError(err.message);
-    }
+      // Removed the buggy Fullscreen code here!
+      if (role === 'admin') navigate('/dashboard'); else navigate('/pos');
+    } catch (err: any) { setError(err.message); }
     setLoading(false);
   };
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
-        {icon}
-        <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">{title}</h2>
-      </div>
+      <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">{icon}<h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">{title}</h2></div>
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className={`bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10 border-t-4 ${role === 'admin' ? 'border-red-600' : 'border-blue-600'}`}>
           <form className="space-y-6" onSubmit={handleLogin}>

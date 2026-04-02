@@ -2,11 +2,9 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { Client, Pool } from 'pg';
 
-// ==========================================
 const PG_PASSWORD = 'password';
 const DB_HOST = '127.0.0.1';
 const DB_NAME = 'cafe_pos';
-// ==========================================
 
 const DEFAULT_DB_URL = `postgres://postgres:${PG_PASSWORD}@${DB_HOST}:5432/postgres`;
 const DB_URL = `postgres://postgres:${PG_PASSWORD}@${DB_HOST}:5432/${DB_NAME}`;
@@ -26,23 +24,18 @@ function postgresDatabasePlugin() {
           isConnected = true;
           break; 
         } catch (err) {
-          console.log(`[DevOps] PostgreSQL is waking up... waiting 2 seconds (${i + 1}/6)`);
           await new Promise(resolve => setTimeout(resolve, 2000));
           adminClient = new Client({ connectionString: DEFAULT_DB_URL });
         }
       }
 
-      if (!isConnected) throw new Error("Could not connect to PostgreSQL. Is Docker running?");
+      if (!isConnected) throw new Error("Could not connect to PostgreSQL.");
 
       const dbCheck = await adminClient.query(`SELECT datname FROM pg_catalog.pg_database WHERE datname = '${DB_NAME}'`);
-      if (dbCheck.rowCount === 0) {
-        console.log(`[DevOps] Database '${DB_NAME}' not found. Auto-creating...`);
-        await adminClient.query(`CREATE DATABASE ${DB_NAME}`);
-      }
+      if (dbCheck.rowCount === 0) await adminClient.query(`CREATE DATABASE ${DB_NAME}`);
       await adminClient.end();
 
       pool = new Pool({ connectionString: DB_URL, max: 20, idleTimeoutMillis: 30000 });
-      console.log(`[DevOps] Successfully Connected to PostgreSQL Pool: ${DB_NAME}`);
 
       await pool.query(`
         CREATE TABLE IF NOT EXISTS profiles (id TEXT PRIMARY KEY, email TEXT UNIQUE, password TEXT, full_name TEXT, role TEXT, created_at TIMESTAMPTZ);
@@ -61,11 +54,12 @@ function postgresDatabasePlugin() {
 
       const userCount = await pool.query('SELECT count(*) as count FROM profiles');
       if (parseInt(userCount.rows[0].count) === 0) {
-        console.log("[DevOps] Seeding Sample Products & Recipes...");
-
         await pool.query(`INSERT INTO profiles (id, email, password, full_name, role, created_at) VALUES ('1', 'admin@cafe.com', 'password', 'Admin Boss', 'admin', CURRENT_TIMESTAMP)`);
         await pool.query(`INSERT INTO profiles (id, email, password, full_name, role, created_at) VALUES ('2', 'staff@cafe.com', 'password', 'Friendly Barista', 'employee', CURRENT_TIMESTAMP)`);
-        await pool.query(`INSERT INTO settings (key, value) VALUES ('business_day_start', '08:00')`);
+        
+        // ✨ Added default_floating_cash to settings
+        await pool.query(`INSERT INTO settings (key, value) VALUES ('business_day_start', '08:00'), ('default_floating_cash', '1500')`);
+        
         await pool.query(`INSERT INTO categories (id, name, created_at) VALUES ('c1', 'Coffee', CURRENT_TIMESTAMP), ('c2', 'Milk Tea', CURRENT_TIMESTAMP), ('c3', 'Pastries', CURRENT_TIMESTAMP)`);
 
         await pool.query(`INSERT INTO ingredients (id, name, stock, unit, created_at) VALUES 
@@ -85,20 +79,11 @@ function postgresDatabasePlugin() {
         `);
 
         await pool.query(`INSERT INTO product_ingredients (id, product_id, ingredient_id, quantity, created_at) VALUES 
-          ('pi1', 'p1', 'i1', 18, CURRENT_TIMESTAMP),
-          ('pi2', 'p1', 'i2', 200, CURRENT_TIMESTAMP),
-          ('pi3', 'p1', 'i3', 30, CURRENT_TIMESTAMP),
-          ('pi4', 'p1', 'i4', 1, CURRENT_TIMESTAMP),
-          ('pi5', 'p2', 'i5', 15, CURRENT_TIMESTAMP),
-          ('pi6', 'p2', 'i2', 150, CURRENT_TIMESTAMP),
-          ('pi7', 'p2', 'i7', 40, CURRENT_TIMESTAMP),
-          ('pi8', 'p2', 'i6', 50, CURRENT_TIMESTAMP),
-          ('pi9', 'p2', 'i4', 1, CURRENT_TIMESTAMP)
+          ('pi1', 'p1', 'i1', 18, CURRENT_TIMESTAMP), ('pi2', 'p1', 'i2', 200, CURRENT_TIMESTAMP), ('pi3', 'p1', 'i3', 30, CURRENT_TIMESTAMP), ('pi4', 'p1', 'i4', 1, CURRENT_TIMESTAMP),
+          ('pi5', 'p2', 'i5', 15, CURRENT_TIMESTAMP), ('pi6', 'p2', 'i2', 150, CURRENT_TIMESTAMP), ('pi7', 'p2', 'i7', 40, CURRENT_TIMESTAMP), ('pi8', 'p2', 'i6', 50, CURRENT_TIMESTAMP), ('pi9', 'p2', 'i4', 1, CURRENT_TIMESTAMP)
         `);
       }
-    } catch (error: any) {
-      dbConnectionError = error.message; 
-    }
+    } catch (error: any) { dbConnectionError = error.message; }
   };
 
   return {
@@ -130,9 +115,6 @@ function postgresDatabasePlugin() {
                 const sets = Object.keys(data).map((k, i) => `${k} = $${i + 1}`).join(', ');
                 await pool.query(`UPDATE ${table} SET ${sets} WHERE id = $${values.length + 1}`, [...values, id]);
                 res.end(JSON.stringify({ success: true }));
-              } else if (action === 'SELECT_ALL') {
-                const result = await pool.query(`SELECT * FROM ${table} ORDER BY created_at DESC`);
-                res.end(JSON.stringify(result.rows));
               } else if (action === 'DELETE') {
                 await pool.query(`DELETE FROM ${table} WHERE id = $1`, [id]);
                 res.end(JSON.stringify({ success: true }));
@@ -147,11 +129,4 @@ function postgresDatabasePlugin() {
   };
 }
 
-export default defineConfig({
-  plugins: [react(), postgresDatabasePlugin()],
-  optimizeDeps: { exclude: ['lucide-react'] },
-  server: { 
-    open: true, // 👈 THIS WILL AUTOMATICALLY OPEN THE BROWSER
-    watch: { ignored: ['**/cafe_management.db', '**/cafe_management.db-journal'] } 
-  }
-});
+export default defineConfig({ plugins: [react(), postgresDatabasePlugin()] });

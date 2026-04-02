@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, CreditCard, Wallet, Smartphone, DollarSign, Printer } from 'lucide-react';
+import { X, CreditCard, Wallet, Printer } from 'lucide-react';
 import { ApiService } from '../services/api';
 
 export function CheckoutModal({ isOpen, onClose, items, onConfirmPayment }: any) {
@@ -15,10 +15,7 @@ export function CheckoutModal({ isOpen, onClose, items, onConfirmPayment }: any)
   const rawTotal = items.reduce((sum: number, item: any) => sum + item.price * item.cartQuantity, 0);
   let subtotal = rawTotal;
   let tax = subtotal * 0.12; 
-  
-  if (discountType === 'senior') {
-    subtotal = rawTotal; tax = 0; subtotal = subtotal * 0.80; 
-  }
+  if (discountType === 'senior') { subtotal = rawTotal; tax = 0; subtotal = subtotal * 0.80; }
   const finalTotal = subtotal + tax;
 
   const handlePayment = async () => {
@@ -26,7 +23,7 @@ export function CheckoutModal({ isOpen, onClose, items, onConfirmPayment }: any)
       try {
         const p = await ApiService.getProfiles();
         const validAdmin = p.find((u: any) => u.role === 'admin' && u.password === adminPin);
-        if (!validAdmin) return alert("Invalid Admin PIN for Discount Override.");
+        if (!validAdmin) return alert("Invalid Admin PIN.");
       } catch { return alert("Error verifying PIN."); }
     }
     setIsProcessing(true);
@@ -62,8 +59,11 @@ export function CheckoutModal({ isOpen, onClose, items, onConfirmPayment }: any)
           </div>
           {paymentMethod === 'cash' && (
             <div className="mb-6 p-4 bg-gray-50 border rounded-lg">
-              <label className="block text-sm font-semibold mb-2">Amount Given (₱)</label>
-              <div className="relative mb-2"><DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" /><input type="number" step="0.01" value={amountGiven} onChange={(e) => setAmountGiven(e.target.value)} className="w-full pl-10 py-2 border rounded-lg text-lg font-bold" /></div>
+              <label className="block text-sm font-semibold mb-2">Amount Given</label>
+              <div className="relative mb-2">
+                <div className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-gray-500">₱</div>
+                <input type="number" step="0.01" value={amountGiven} onChange={(e) => setAmountGiven(e.target.value)} className="w-full pl-8 py-2 border rounded-lg text-lg font-bold focus:ring-2 focus:ring-blue-600 outline-none" />
+              </div>
               {parseFloat(amountGiven || '0') >= finalTotal && <div className="text-green-600 font-bold flex justify-between pt-2"><span>Change:</span><span>₱{(parseFloat(amountGiven) - finalTotal).toFixed(2)}</span></div>}
             </div>
           )}
