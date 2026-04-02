@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
-import { Settings, ShoppingBag, LogOut, ShieldAlert } from 'lucide-react';
+import { Settings, ShoppingBag, LogOut, ShieldAlert, Database } from 'lucide-react';
 import type { Product, Category, CartItem, Order, OrderItem, Profile, Shift } from './lib/database.types';
 import { ApiService } from './services/api';
 
@@ -150,13 +150,14 @@ function AppContent() {
   const [session, setSession] = useState<any>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   
-  // Track loading status independently
+  // Track loading and errors robustly
   const [loading, setLoading] = useState(true);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [criticalError, setCriticalError] = useState<string | null>(null);
 
   useEffect(() => {
     let unsub: any = null;
 
+    // Connect to the API. If it throws, we catch it and show the error screen!
     ApiService.ensureInit()
       .then(() => {
         setDbReady(true);
@@ -176,8 +177,8 @@ function AppContent() {
         unsub = authListener.unsubscribe;
       })
       .catch((err) => {
-        console.error(err);
-        setErrorMsg("Failed to connect to Local Database. Please verify vite.config.ts and restart server.");
+        console.error("Critical System Failure:", err);
+        setCriticalError(err.message);
       });
 
     return () => { if (unsub) unsub(); };
@@ -192,18 +193,27 @@ function AppContent() {
     }
   }, [session, dbReady]);
 
-  const handleLogout = async () => { await ApiService.logout(); };
-
-  if (errorMsg) {
-    return <div className="h-screen flex items-center justify-center text-red-600 font-bold p-8 text-center">{errorMsg}</div>;
+  // 🔥 THE CRASH PREVENTER: Show a beautiful error instead of a white screen
+  if (criticalError) {
+    return (
+      <div className="h-screen flex flex-col items-center justify-center bg-gray-50 p-6">
+        <Database className="w-20 h-20 text-red-500 mb-6" />
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">Database Connection Failed</h1>
+        <div className="bg-red-50 text-red-700 p-6 rounded-xl border border-red-200 max-w-lg w-full text-center shadow-sm">
+          <p className="font-mono text-sm break-words">{criticalError}</p>
+        </div>
+        <p className="mt-8 text-gray-500 text-center max-w-md">
+          Please check your <code className="bg-gray-200 px-1 rounded">vite.config.ts</code> file and ensure the PostgreSQL password matches your local setup, or start your Docker container.
+        </p>
+      </div>
+    );
   }
 
-  // FORCE wait until both the DB is ready AND the user profile is fetched before drawing routes
   if (!dbReady || loading || (session && !profile)) {
     return (
       <div className="h-screen flex flex-col items-center justify-center bg-gray-50">
         <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
-        <div className="text-xl font-bold text-gray-700">Loading System...</div>
+        <div className="text-xl font-bold text-gray-700">Connecting to PostgreSQL...</div>
       </div>
     );
   }
@@ -218,14 +228,14 @@ function AppContent() {
         !session ? <Navigate to="/login" /> :
         profile?.role === 'admin' ? <Navigate to="/admin/dashboard" /> :
         profile?.role === 'employee' ? <POSView session={session} profile={profile} /> :
-        <div className="h-screen flex items-center justify-center text-red-500">Error loading profile. <button onClick={handleLogout} className="ml-4 underline">Logout</button></div>
+        <Navigate to="/login" />
       } />
 
       <Route path="/admin/dashboard" element={
         !session ? <Navigate to="/admin" /> :
         profile?.role === 'employee' ? <Navigate to="/pos" /> :
         profile?.role === 'admin' ? <AdminView /> :
-        <div className="h-screen flex items-center justify-center text-red-500">Error loading profile. <button onClick={handleLogout} className="ml-4 underline">Logout</button></div>
+        <Navigate to="/login" />
       } />
     </Routes>
   );

@@ -9,12 +9,19 @@ async function sqlRequest(payload: any) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   });
-  return await res.json();
+  const data = await res.json();
+  
+  // If the backend threw an error (like Wrong Password), throw it to React!
+  if (!res.ok) {
+    throw new Error(data.error || "Unknown Database Connection Error");
+  }
+  return data;
 }
 
 function generateId() { return Math.random().toString(36).substring(2, 15); }
 
 export const ApiService = {
+  // Verifies the database is alive before loading the app
   async ensureInit() {
     await sqlRequest({ action: 'QUERY', query: 'SELECT 1' });
   },
@@ -60,7 +67,7 @@ export const ApiService = {
 
   async getProducts() { 
     const products = await sqlRequest({ action: 'SELECT_ALL', table: 'products' });
-    return products.map((p: any) => ({ ...p, price: parseFloat(p.price) })); // PG returns NUMERIC as string
+    return products.map((p: any) => ({ ...p, price: parseFloat(p.price) })); 
   },
   async getCategories() { return await sqlRequest({ action: 'SELECT_ALL', table: 'categories' }); },
   
