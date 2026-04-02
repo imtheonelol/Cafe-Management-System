@@ -34,14 +34,10 @@ export function AdminDashboard() {
   const filteredOrders = useMemo(() => orders.filter(o => isWithinTime(o.created_at) && (o.profiles?.email?.toLowerCase().includes(searchQuery.toLowerCase()) || o.profiles?.full_name?.toLowerCase().includes(searchQuery.toLowerCase()))), [orders, searchQuery, timeFilter]);
   const filteredShifts = useMemo(() => shifts.filter(s => isWithinTime(s.start_time) && (s.profiles?.email?.toLowerCase().includes(searchQuery.toLowerCase()) || s.profiles?.full_name?.toLowerCase().includes(searchQuery.toLowerCase()))), [shifts, searchQuery, timeFilter]);
 
-  // Calculate Monthly Sales
   const monthlySales = useMemo(() => {
     const currentMonth = new Date().getMonth();
     const currentYear = new Date().getFullYear();
-    return orders.filter(o => {
-      const d = new Date(o.created_at);
-      return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-    }).reduce((sum, o) => sum + o.total, 0);
+    return orders.filter(o => new Date(o.created_at).getMonth() === currentMonth && new Date(o.created_at).getFullYear() === currentYear).reduce((sum, o) => sum + o.total, 0);
   }, [orders]);
 
   const stats = { totalSales: filteredOrders.reduce((acc, curr) => acc + curr.total, 0), totalOrders: filteredOrders.length };
@@ -49,23 +45,14 @@ export function AdminDashboard() {
   return (
     <div className="pb-24 p-6">
       <div className="max-w-7xl mx-auto mb-6 flex gap-4 border-b border-gray-200 pb-4">
-        <button onClick={() => setActiveTab('transactions')} className={`flex items-center gap-2 px-6 py-3 rounded-lg font-bold transition-colors ${activeTab === 'transactions' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100 border'}`}>
-          <ShoppingBag size={20} /> Transactions
-        </button>
-        <button onClick={() => setActiveTab('audits')} className={`flex items-center gap-2 px-6 py-3 rounded-lg font-bold transition-colors ${activeTab === 'audits' ? 'bg-purple-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100 border'}`}>
-          <ClipboardCheck size={20} /> Shift Audits
-        </button>
+        <button onClick={() => setActiveTab('transactions')} className={`flex items-center gap-2 px-6 py-3 rounded-lg font-bold transition-colors ${activeTab === 'transactions' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100 border'}`}><ShoppingBag size={20} /> Transactions</button>
+        <button onClick={() => setActiveTab('audits')} className={`flex items-center gap-2 px-6 py-3 rounded-lg font-bold transition-colors ${activeTab === 'audits' ? 'bg-purple-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100 border'}`}><ClipboardCheck size={20} /> Shift Audits</button>
       </div>
 
       <div className="max-w-7xl mx-auto mb-6 bg-white p-4 rounded-xl shadow-sm border flex flex-wrap gap-4 items-center">
         <div className="flex items-center gap-2 text-gray-500 font-medium"><Filter size={18}/><span>Filters:</span></div>
-        <select value={timeFilter} onChange={(e) => setTimeFilter(e.target.value)} className="border rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-600">
-          <option value="all">All Time</option><option value="today">Today</option><option value="week">This Week</option>
-        </select>
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-          <input type="text" placeholder="Search by email or name..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-600" />
-        </div>
+        <select value={timeFilter} onChange={(e) => setTimeFilter(e.target.value)} className="border rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-600"><option value="all">All Time</option><option value="today">Today</option><option value="week">This Week</option></select>
+        <div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} /><input type="text" placeholder="Search by email or name..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-600" /></div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 max-w-7xl mx-auto">
@@ -79,9 +66,7 @@ export function AdminDashboard() {
           <table className="w-full text-left">
             <thead className="bg-gray-50"><tr><th className="p-4">Date</th><th className="p-4">Employee</th><th className="p-4">Method</th><th className="p-4">Total</th></tr></thead>
             <tbody>
-              {filteredOrders.map((o) => (
-                <tr key={o.id} className="border-b hover:bg-gray-50"><td className="p-4">{new Date(o.created_at).toLocaleString()}</td><td className="p-4">{o.profiles?.full_name || o.profiles?.email}</td><td className="p-4 uppercase text-sm font-bold">{o.payment_method}</td><td className="p-4 font-bold text-green-600">₱{o.total.toFixed(2)}</td></tr>
-              ))}
+              {filteredOrders.map((o) => <tr key={o.id} className="border-b hover:bg-gray-50"><td className="p-4">{new Date(o.created_at).toLocaleString()}</td><td className="p-4">{o.profiles?.full_name || o.profiles?.email}</td><td className="p-4 uppercase text-sm font-bold">{o.payment_method}</td><td className="p-4 font-bold text-green-600">₱{o.total.toFixed(2)}</td></tr>)}
             </tbody>
           </table>
         </div>

@@ -31,11 +31,13 @@ export const ApiService = {
   async logout() { localStorage.removeItem(SESSION_KEY); authListeners.forEach(l => l(null)); },
   async getProfiles() { return await sqlRequest({ action: 'QUERY', query: 'SELECT * FROM profiles ORDER BY created_at DESC' }); },
 
-  // System Config
   async getSettings() { const rows = await sqlRequest({ action: 'QUERY', query: 'SELECT * FROM settings' }); return rows.reduce((acc: any, row: any) => ({ ...acc, [row.key]: row.value }), {}); },
   async updateSetting(key: string, value: string) { await sqlRequest({ action: 'QUERY', query: 'UPDATE settings SET value = ? WHERE key = ?', params: [value, key] }); },
 
-  // Products & Ingredients
+  async addProfile(data: any) { await sqlRequest({ action: 'INSERT', table: 'profiles', data: { ...data, id: generateId(), created_at: new Date().toISOString() } }); },
+  async deleteProfile(id: string) { await sqlRequest({ action: 'DELETE', table: 'profiles', id }); },
+  async updateProfile(id: string, data: any) { await sqlRequest({ action: 'UPDATE', table: 'profiles', data, id }); },
+
   async getCategories() { return await sqlRequest({ action: 'QUERY', query: 'SELECT * FROM categories ORDER BY name' }); },
   async getProducts() { const r = await sqlRequest({ action: 'QUERY', query: 'SELECT * FROM products ORDER BY name' }); return r.map((p: any) => ({...p, price: parseFloat(p.price)})); },
   async addProduct(data: any) { await sqlRequest({ action: 'INSERT', table: 'products', data: { ...data, id: generateId(), created_at: new Date().toISOString() } }); },
@@ -47,7 +49,6 @@ export const ApiService = {
   async addIngredient(data: any) { await sqlRequest({ action: 'INSERT', table: 'ingredients', data: { ...data, id: generateId(), created_at: new Date().toISOString() }}); },
   async deleteIngredient(id: string) { await sqlRequest({ action: 'DELETE', table: 'ingredients', id }); },
 
-  // Checkout & KDS
   async createOrder(employeeId: string, cartItems: CartItem[], total: number, taxAmount: number, discountType: string, paymentMethod: string, receiptNumber: string) {
     const orderId = generateId();
     const orderData = { id: orderId, order_number: `ORD-${Date.now()}`, total, tax_amount: taxAmount, discount_type: discountType, payment_method: paymentMethod, payment_status: 'completed', fulfillment_status: 'pending', receipt_number: receiptNumber, employee_id: employeeId, created_at: new Date().toISOString() };
@@ -56,8 +57,6 @@ export const ApiService = {
     for (const item of cartItems) {
       await sqlRequest({ action: 'INSERT', table: 'order_items', data: { id: generateId(), order_id: orderId, product_id: item.id, quantity: item.cartQuantity, price: item.price, subtotal: item.price * item.cartQuantity, created_at: new Date().toISOString() }});
       await sqlRequest({ action: 'QUERY', query: 'UPDATE products SET stock = stock - ? WHERE id = ?', params: [item.cartQuantity, item.id] });
-      
-      // Deduct raw ingredients mapping
       const pIngs = await sqlRequest({ action: 'QUERY', query: 'SELECT * FROM product_ingredients WHERE product_id = ?', params: [item.id]});
       for (const pi of pIngs) {
         await sqlRequest({ action: 'QUERY', query: 'UPDATE ingredients SET stock = stock - ? WHERE id = ?', params: [parseFloat(pi.quantity) * item.cartQuantity, pi.ingredient_id] });
@@ -76,7 +75,6 @@ export const ApiService = {
   },
   async markOrderCompleted(orderId: string) { await sqlRequest({ action: 'QUERY', query: "UPDATE orders SET fulfillment_status = 'completed' WHERE id = ?", params: [orderId] }); },
 
-  // Shifts & Audits
   async getActiveShift(employeeId: string) {
     const rows = await sqlRequest({ action: 'QUERY', query: 'SELECT * FROM shifts WHERE employee_id = ? AND end_time IS NULL', params: [employeeId] });
     const shift = rows[0] || null;

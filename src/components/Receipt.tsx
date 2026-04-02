@@ -2,12 +2,7 @@ import { useEffect } from 'react';
 import { X, Printer } from 'lucide-react';
 
 export function Receipt({ isOpen, onClose, order, orderItems, shouldPrint }: any) {
-  useEffect(() => {
-    if (isOpen && shouldPrint) {
-      setTimeout(() => window.print(), 500);
-    }
-  }, [isOpen, shouldPrint]);
-
+  useEffect(() => { if (isOpen && shouldPrint) setTimeout(() => window.print(), 500); }, [isOpen, shouldPrint]);
   if (!isOpen || !order) return null;
 
   return (
@@ -20,16 +15,10 @@ export function Receipt({ isOpen, onClose, order, orderItems, shouldPrint }: any
             <button onClick={onClose} className="text-gray-500"><X size={20} /></button>
           </div>
         </div>
-
         <div className="p-6 print:p-8">
           <div className="text-center mb-6"><h1 className="text-2xl font-bold mb-1">Cafe POS</h1><p className="text-sm text-gray-600">Order #{order.order_number}</p></div>
           <div className="space-y-2 mb-4">
-            {orderItems.map((item: any) => (
-              <div key={item.id} className="flex justify-between text-sm">
-                <span>{item.quantity}x {item.product.name}</span>
-                <span className="font-semibold">₱{item.subtotal.toFixed(2)}</span>
-              </div>
-            ))}
+            {orderItems.map((item: any) => <div key={item.id} className="flex justify-between text-sm"><span>{item.quantity}x {item.product.name}</span><span className="font-semibold">₱{item.subtotal.toFixed(2)}</span></div>)}
           </div>
           <div className="border-t pt-4 space-y-2">
             {order.discount_type !== 'none' && <div className="flex justify-between text-sm text-red-600"><span>Discount applied</span></div>}

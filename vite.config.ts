@@ -22,7 +22,6 @@ function postgresDatabasePlugin() {
       client = new Client({ connectionString: DB_URL });
       await client.connect();
 
-      // Core Tables
       await client.query(`
         CREATE TABLE IF NOT EXISTS profiles (id TEXT PRIMARY KEY, email TEXT UNIQUE, password TEXT, full_name TEXT, role TEXT, created_at TIMESTAMPTZ);
         CREATE TABLE IF NOT EXISTS categories (id TEXT PRIMARY KEY, name TEXT UNIQUE, created_at TIMESTAMPTZ);
@@ -31,12 +30,9 @@ function postgresDatabasePlugin() {
         CREATE TABLE IF NOT EXISTS order_items (id TEXT PRIMARY KEY, order_id TEXT, product_id TEXT, quantity INTEGER, price NUMERIC, subtotal NUMERIC, created_at TIMESTAMPTZ);
         CREATE TABLE IF NOT EXISTS shifts (id TEXT PRIMARY KEY, employee_id TEXT, starting_cash NUMERIC, start_time TIMESTAMPTZ, ending_cash NUMERIC, expected_cash NUMERIC, end_time TIMESTAMPTZ);
         CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
-      `);
-
-      // NEW: Ingredients & Alter Orders for Discounts/KDS
-      await client.query(`
         CREATE TABLE IF NOT EXISTS ingredients (id TEXT PRIMARY KEY, name TEXT UNIQUE, stock NUMERIC, unit TEXT, created_at TIMESTAMPTZ);
         CREATE TABLE IF NOT EXISTS product_ingredients (id TEXT PRIMARY KEY, product_id TEXT, ingredient_id TEXT, quantity NUMERIC, created_at TIMESTAMPTZ);
+        
         ALTER TABLE orders ADD COLUMN IF NOT EXISTS discount_type TEXT DEFAULT 'none';
         ALTER TABLE orders ADD COLUMN IF NOT EXISTS tax_amount NUMERIC DEFAULT 0;
         ALTER TABLE orders ADD COLUMN IF NOT EXISTS fulfillment_status TEXT DEFAULT 'pending';
@@ -48,9 +44,7 @@ function postgresDatabasePlugin() {
         await client.query(`INSERT INTO profiles (id, email, password, full_name, role, created_at) VALUES ('2', 'staff@cafe.com', 'password', 'Friendly Barista', 'employee', CURRENT_TIMESTAMP)`);
         await client.query(`INSERT INTO settings (key, value) VALUES ('business_day_start', '08:00')`);
       }
-    } catch (error: any) {
-      dbConnectionError = error.message; 
-    }
+    } catch (error: any) { dbConnectionError = error.message; }
   };
 
   return {
