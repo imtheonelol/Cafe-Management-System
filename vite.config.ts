@@ -2,12 +2,8 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { Client, Pool } from 'pg';
 
-// ==========================================
-// 🛑 POSTGRESQL CONFIGURATION
 const PG_PASSWORD = 'password';
 const DB_HOST = '127.0.0.1';
-// ==========================================
-
 const DB_NAME = 'cafe_pos';
 const DEFAULT_DB_URL = `postgres://postgres:${PG_PASSWORD}@${DB_HOST}:5432/postgres`;
 const DB_URL = `postgres://postgres:${PG_PASSWORD}@${DB_HOST}:5432/${DB_NAME}`;
@@ -21,12 +17,11 @@ function postgresDatabasePlugin() {
       let adminClient = new Client({ connectionString: DEFAULT_DB_URL });
       let isConnected = false;
 
-      // 🛠️ SMART RETRY: Wait for Docker to finish booting!
       for (let i = 0; i < 6; i++) {
         try {
           await adminClient.connect();
           isConnected = true;
-          break; // Connected successfully!
+          break; 
         } catch (err) {
           console.log(`[DevOps] PostgreSQL is waking up... waiting 2 seconds (${i + 1}/6)`);
           await new Promise(resolve => setTimeout(resolve, 2000));
@@ -59,12 +54,8 @@ function postgresDatabasePlugin() {
         
         ALTER TABLE orders ADD COLUMN IF NOT EXISTS discount_type TEXT DEFAULT 'none';
         ALTER TABLE orders ADD COLUMN IF NOT EXISTS tax_amount NUMERIC DEFAULT 0;
-        ALTER TABLE orders ADD COLUMN IF NOT EXISTS fulfillment_status TEXT DEFAULT 'pending';
       `);
 
-      // ==========================================
-      // 🍔 RECIPE & INVENTORY AUTO-SEEDER
-      // ==========================================
       const userCount = await pool.query('SELECT count(*) as count FROM profiles');
       if (parseInt(userCount.rows[0].count) === 0) {
         console.log("[DevOps] Seeding Sample Products & Recipes...");

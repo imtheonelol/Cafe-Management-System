@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
-import { Settings, ShoppingBag, LogOut, ShieldAlert, Database, ChefHat } from 'lucide-react';
+import { ShoppingBag, LogOut, ShieldAlert, Database, Package, BarChart } from 'lucide-react';
 import type { Product, Category, CartItem, Order, OrderItem, Profile, Shift } from './lib/database.types';
 import { ApiService } from './services/api';
 
@@ -13,29 +13,47 @@ import { AdminDashboard } from './components/AdminDashboard';
 import { EmployeeLogin, AdminLogin } from './components/LoginPages';
 import { StartShift } from './components/StartShift';
 import { EndShiftModal } from './components/EndShiftModal';
-import { KDS } from './components/KDS';
 
 function POSView({ session, profile }: { session: any, profile: Profile }) {
   const navigate = useNavigate();
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('all');
   
   const [showCheckout, setShowCheckout] = useState(false);
   const [showReceipt, setShowReceipt] = useState(false);
   const [showEndShift, setShowEndShift] = useState(false);
+  const [showBackOffice, setShowBackOffice] = useState(false);
   const [printCustomerReceipt, setPrintCustomerReceipt] = useState(false);
   
   const [currentOrder, setCurrentOrder] = useState<Order | null>(null);
   const [currentOrderItems, setCurrentOrderItems] = useState<(OrderItem & { product: Product })[]>([]);
   const [activeShift, setActiveShift] = useState<Shift | null>(null);
+  const [liveCashSales, setLiveCashSales] = useState(0);
 
-  useEffect(() => {
+  const loadData = () => {
     ApiService.getCategories().then(setCategories);
     ApiService.getProducts().then(setProducts);
+    ApiService.getProfiles().then(setProfiles);
     ApiService.getActiveShift(session.user.id).then(setActiveShift);
-  }, [session]);
+  };
+
+  useEffect(() => { loadData(); }, [session]);
+
+  // LIVE CASH TRACKER
+  useEffect(() => {
+    const fetchSales = async () => {
+      if (activeShift) {
+        const sales = await ApiService.getCashSalesForShift(session.user.id, activeShift.start_time);
+        setLiveCashSales(sales);
+      }
+    };
+    fetchSales();
+    window.addEventListener('db_changed', fetchSales);
+    return () => window.removeEventListener('db_changed', fetchSales);
+  }, [activeShift, session.user.id]);
 
   const handleLogoutClick = () => { if (activeShift) setShowEndShift(true); else executeLogout(); };
   const executeLogout = async () => { setShowEndShift(false); await ApiService.logout(); navigate('/login'); };
@@ -74,9 +92,17 @@ function POSView({ session, profile }: { session: any, profile: Profile }) {
             <ShoppingBag className="w-8 h-8 text-blue-600" />
             <div><h1 className="text-2xl font-bold text-gray-900">Cafe POS</h1><p className="text-sm text-gray-600">Cashier: {profile.full_name || profile.email}</p></div>
           </div>
+          
           <div className="flex items-center gap-4">
-            <button onClick={() => navigate('/kds')} className="flex items-center gap-2 px-4 py-2 bg-yellow-500 text-yellow-900 rounded-lg hover:bg-yellow-400 font-bold"><ChefHat size={18}/> KDS View</button>
-            <button onClick={handleLogoutClick} className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-bold"><LogOut size={18} /> {activeShift ? 'End Shift & Logout' : 'Logout'}</button>
+            {/* LIVE DRAWER TRACKER */}
+            <div className="bg-green-50 text-green-900 px-4 py-2 rounded-lg text-right border border-green-200">
+               <div className="text-xs font-semibold">Starting: ₱{activeShift ? parseFloat(activeShift.starting_cash as any).toFixed(2) : '0.00'} | Cash Sales: ₱{liveCashSales.toFixed(2)}</div>
+               <div className="text-sm font-bold">Expected Drawer: ₱{((activeShift ? parseFloat(activeShift.starting_cash as any) : 0) + liveCashSales).toFixed(2)}</div>
+            </div>
+
+            <button onClick={() => setShowBackOffice(true)} className="flex items-center gap-2 px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 font-bold"><Package size={18}/> Inventory</button>
+            <button onClick={() => navigate('/dashboard')} className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-bold"><BarChart size={18}/> My Sales</button>
+            <button onClick={handleLogoutClick} className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-bold"><LogOut size={18} /> End Shift</button>
           </div>
         </header>
         <div className="flex-1 flex overflow-hidden">
@@ -85,32 +111,29 @@ function POSView({ session, profile }: { session: any, profile: Profile }) {
         </div>
         <CheckoutModal isOpen={showCheckout} onClose={() => setShowCheckout(false)} items={cartItems} onConfirmPayment={confirmPayment} />
         <Receipt isOpen={showReceipt} onClose={() => setShowReceipt(false)} order={currentOrder} orderItems={currentOrderItems} shouldPrint={printCustomerReceipt} />
+        <BackOffice isOpen={showBackOffice} onClose={() => setShowBackOffice(false)} products={products} categories={categories} profiles={profiles} profile={profile} onRefresh={loadData} />
       </div>
     </>
   );
 }
 
-function AdminView() {
+function DashboardView({ session, profile }: { session: any, profile: Profile }) {
   const navigate = useNavigate();
-  const [showBackOffice, setShowBackOffice] = useState(false);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [profiles, setProfiles] = useState<Profile[]>([]);
-
-  const loadData = () => { ApiService.getCategories().then(setCategories); ApiService.getProducts().then(setProducts); ApiService.getProfiles().then(setProfiles); };
-  useEffect(() => { loadData(); }, []);
-
-  const executeLogout = async () => { await ApiService.logout(); navigate('/admin'); };
+  const executeLogout = async () => { await ApiService.logout(); navigate('/login'); };
 
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b px-8 py-4 flex items-center justify-between shadow-sm max-w-7xl mx-auto rounded-b-xl mb-8">
-        <div className="flex items-center gap-3"><ShieldAlert className="w-8 h-8 text-red-600" /><h1 className="text-2xl font-bold">Admin Control Panel</h1></div>
-        <button onClick={executeLogout} className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:text-red-600 font-semibold"><LogOut size={20} /> Logout</button>
+        <div className="flex items-center gap-3">
+          <ShieldAlert className={`w-8 h-8 ${profile.role === 'admin' ? 'text-red-600' : 'text-blue-600'}`} />
+          <h1 className="text-2xl font-bold">{profile.role === 'admin' ? 'Admin Control Panel' : 'My Sales Report'}</h1>
+        </div>
+        <div className="flex gap-4">
+          <button onClick={() => navigate('/pos')} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold">Back to POS</button>
+          <button onClick={executeLogout} className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:text-red-600 font-semibold"><LogOut size={20} /> Logout</button>
+        </div>
       </header>
-      <AdminDashboard />
-      <button onClick={() => setShowBackOffice(true)} className="fixed bottom-8 right-8 flex items-center gap-2 px-6 py-3 bg-gray-900 text-white rounded-full shadow-lg hover:bg-gray-800 font-bold z-40"><Settings size={20} /> System Config</button>
-      <BackOffice isOpen={showBackOffice} onClose={() => setShowBackOffice(false)} products={products} categories={categories} profiles={profiles} onRefresh={loadData} />
+      <AdminDashboard profile={profile} />
     </div>
   );
 }
@@ -145,7 +168,6 @@ function AppContent() {
         <Database className="w-20 h-20 text-red-500 mb-6" />
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Database Connection Failed</h1>
         <div className="bg-red-50 text-red-700 p-6 rounded-xl border border-red-200 max-w-lg w-full text-center shadow-sm"><p className="font-mono text-sm break-words">{criticalError}</p></div>
-        <p className="mt-8 text-gray-500 text-center max-w-md">Please ensure your Docker container or PostgreSQL server is running.</p>
       </div>
     );
   }
@@ -162,11 +184,10 @@ function AppContent() {
   return (
     <Routes>
       <Route path="/" element={<Navigate to="/login" />} />
-      <Route path="/login" element={!session ? <EmployeeLogin /> : (profile?.role === 'admin' ? <Navigate to="/admin/dashboard" /> : <Navigate to="/pos" />)} />
-      <Route path="/admin" element={!session ? <AdminLogin /> : (profile?.role === 'admin' ? <Navigate to="/admin/dashboard" /> : <Navigate to="/pos" />)} />
-      <Route path="/kds" element={!session ? <Navigate to="/login" /> : <KDS />} />
-      <Route path="/pos" element={!session ? <Navigate to="/login" /> : profile?.role === 'admin' ? <Navigate to="/admin/dashboard" /> : <POSView session={session} profile={profile} />} />
-      <Route path="/admin/dashboard" element={!session ? <Navigate to="/admin" /> : profile?.role === 'employee' ? <Navigate to="/pos" /> : <AdminView />} />
+      <Route path="/login" element={!session ? <EmployeeLogin /> : (profile?.role === 'admin' ? <Navigate to="/dashboard" /> : <Navigate to="/pos" />)} />
+      <Route path="/admin" element={!session ? <AdminLogin /> : (profile?.role === 'admin' ? <Navigate to="/dashboard" /> : <Navigate to="/pos" />)} />
+      <Route path="/dashboard" element={!session ? <Navigate to="/login" /> : <DashboardView session={session} profile={profile} />} />
+      <Route path="/pos" element={!session ? <Navigate to="/login" /> : profile?.role === 'admin' ? <Navigate to="/dashboard" /> : <POSView session={session} profile={profile} />} />
     </Routes>
   );
 }

@@ -51,7 +51,7 @@ export const ApiService = {
 
   async createOrder(employeeId: string, cartItems: CartItem[], total: number, taxAmount: number, discountType: string, paymentMethod: string, receiptNumber: string) {
     const orderId = generateId();
-    const orderData = { id: orderId, order_number: `ORD-${Date.now()}`, total, tax_amount: taxAmount, discount_type: discountType, payment_method: paymentMethod, payment_status: 'completed', fulfillment_status: 'pending', receipt_number: receiptNumber, employee_id: employeeId, created_at: new Date().toISOString() };
+    const orderData = { id: orderId, order_number: `ORD-${Date.now()}`, total, tax_amount: taxAmount, discount_type: discountType, payment_method: paymentMethod, payment_status: 'completed', receipt_number: receiptNumber, employee_id: employeeId, created_at: new Date().toISOString() };
     await sqlRequest({ action: 'INSERT', table: 'orders', data: orderData });
 
     for (const item of cartItems) {
@@ -65,15 +65,6 @@ export const ApiService = {
     window.dispatchEvent(new Event('db_changed'));
     return orderData;
   },
-
-  async getPendingOrders() {
-    const orders = await sqlRequest({ action: 'QUERY', query: "SELECT * FROM orders WHERE fulfillment_status = 'pending' ORDER BY created_at ASC" });
-    for (const o of orders) {
-      o.items = await sqlRequest({ action: 'QUERY', query: "SELECT oi.quantity, p.name FROM order_items oi JOIN products p ON oi.product_id = p.id WHERE oi.order_id = ?", params: [o.id] });
-    }
-    return orders;
-  },
-  async markOrderCompleted(orderId: string) { await sqlRequest({ action: 'QUERY', query: "UPDATE orders SET fulfillment_status = 'completed' WHERE id = ?", params: [orderId] }); },
 
   async getActiveShift(employeeId: string) {
     const rows = await sqlRequest({ action: 'QUERY', query: 'SELECT * FROM shifts WHERE employee_id = ? AND end_time IS NULL', params: [employeeId] });
@@ -93,9 +84,15 @@ export const ApiService = {
     }
     return shift;
   },
+  
   async getLastShift() { const r = await sqlRequest({ action: 'QUERY', query: 'SELECT * FROM shifts WHERE end_time IS NOT NULL ORDER BY end_time DESC LIMIT 1' }); return r[0] ? {...r[0], ending_cash: parseFloat(r[0].ending_cash)} : null; },
   async startShift(employeeId: string, startingCash: number) { const data = { id: generateId(), employee_id: employeeId, starting_cash: startingCash, start_time: new Date().toISOString() }; await sqlRequest({ action: 'INSERT', table: 'shifts', data }); return data; },
-  async getCashSalesForShift(employeeId: string, startTime: string) { const r = await sqlRequest({ action: 'QUERY', query: 'SELECT total FROM orders WHERE employee_id = ? AND payment_method = "cash" AND created_at >= ?', params: [employeeId, startTime] }); return r.reduce((sum: number, o: any) => sum + parseFloat(o.total), 0); },
+  
+  async getCashSalesForShift(employeeId: string, startTime: string) { 
+    const r = await sqlRequest({ action: 'QUERY', query: 'SELECT total FROM orders WHERE employee_id = ? AND payment_method = "cash" AND created_at >= ?', params: [employeeId, startTime] }); 
+    return r.reduce((sum: number, o: any) => sum + parseFloat(o.total), 0); 
+  },
+  
   async endShift(shiftId: string, endingCash: number, expectedCash: number) { await sqlRequest({ action: 'UPDATE', table: 'shifts', id: shiftId, data: { ending_cash: endingCash, expected_cash: expectedCash, end_time: new Date().toISOString() }}); },
 
   async getAdminDashboardData() {
