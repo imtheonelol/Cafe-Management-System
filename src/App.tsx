@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
-import { ShoppingBag, LogOut, ShieldAlert, Database, Package, BarChart } from 'lucide-react';
+import { ShoppingBag, LogOut, ShieldAlert, Database, Package, BarChart, Settings } from 'lucide-react';
 import type { Product, Category, CartItem, Order, OrderItem, Profile, Shift } from './lib/database.types';
 import { ApiService } from './services/api';
 
@@ -102,7 +102,7 @@ function POSView({ session, profile }: { session: any, profile: Profile }) {
             </div>
 
             <button onClick={() => setShowBackOffice(true)} className="flex items-center gap-2 px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 font-bold"><Package size={18}/> Inventory</button>
-            <button onClick={() => navigate('/dashboard')} className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-bold"><BarChart size={18}/> My Sales</button>
+            <button onClick={() => navigate('/dashboard')} className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-bold"><BarChart size={18}/> {profile.role === 'admin' ? 'Admin Dashboard' : 'My Sales'}</button>
             <button onClick={handleLogoutClick} className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-bold"><LogOut size={18} /> End Shift</button>
           </div>
         </header>
@@ -120,10 +120,23 @@ function POSView({ session, profile }: { session: any, profile: Profile }) {
 
 function DashboardView({ session, profile }: { session: any, profile: Profile }) {
   const navigate = useNavigate();
+  const [showBackOffice, setShowBackOffice] = useState(false);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+
+  const loadData = () => {
+    ApiService.getCategories().then(setCategories);
+    ApiService.getProducts().then(setProducts);
+    ApiService.getProfiles().then(setProfiles);
+  };
+
+  useEffect(() => { loadData(); }, []);
+
   const executeLogout = async () => { await ApiService.logout(); navigate('/login'); };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 relative">
       <header className="bg-white border-b px-8 py-4 flex items-center justify-between shadow-sm max-w-7xl mx-auto rounded-b-xl mb-8">
         <div className="flex items-center gap-3">
           <ShieldAlert className={`w-8 h-8 ${profile.role === 'admin' ? 'text-red-600' : 'text-blue-600'}`} />
@@ -134,7 +147,17 @@ function DashboardView({ session, profile }: { session: any, profile: Profile })
           <button onClick={executeLogout} className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:text-red-600 font-semibold"><LogOut size={20} /> Logout</button>
         </div>
       </header>
+      
       <AdminDashboard profile={profile} />
+
+      {/* ✨ Restored System Config Button for Admins! */}
+      {profile.role === 'admin' && (
+        <button onClick={() => setShowBackOffice(true)} className="fixed bottom-8 right-8 flex items-center gap-2 px-6 py-3 bg-gray-900 text-white rounded-full shadow-lg hover:bg-gray-800 font-bold z-40">
+          <Settings size={20} /> System Config
+        </button>
+      )}
+
+      <BackOffice isOpen={showBackOffice} onClose={() => setShowBackOffice(false)} products={products} categories={categories} profiles={profiles} profile={profile} onRefresh={loadData} />
     </div>
   );
 }
@@ -188,7 +211,9 @@ function AppContent() {
       <Route path="/login" element={!session ? <EmployeeLogin /> : (profile?.role === 'admin' ? <Navigate to="/dashboard" /> : <Navigate to="/pos" />)} />
       <Route path="/admin" element={!session ? <AdminLogin /> : (profile?.role === 'admin' ? <Navigate to="/dashboard" /> : <Navigate to="/pos" />)} />
       <Route path="/dashboard" element={!session ? <Navigate to="/login" /> : <DashboardView session={session} profile={profile} />} />
-      <Route path="/pos" element={!session ? <Navigate to="/login" /> : profile?.role === 'admin' ? <Navigate to="/dashboard" /> : <POSView session={session} profile={profile} />} />
+      
+      {/* ✨ Allowed Admins to access the POS instead of locking them out! */}
+      <Route path="/pos" element={!session ? <Navigate to="/login" /> : <POSView session={session} profile={profile} />} />
     </Routes>
   );
 }
