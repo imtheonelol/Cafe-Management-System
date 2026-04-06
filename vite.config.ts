@@ -18,13 +18,14 @@ function postgresDatabasePlugin() {
       let adminClient = new Client({ connectionString: DEFAULT_DB_URL });
       let isConnected = false;
 
-      for (let i = 0; i < 6; i++) {
+      // ✨ INCREASED RETRIES: Now waits up to 30 seconds for Docker to wake up!
+      for (let i = 0; i < 15; i++) {
         try {
           await adminClient.connect();
           isConnected = true;
           break; 
         } catch (err) {
-          console.log(`[DevOps] PostgreSQL is waking up... waiting 2 seconds (${i + 1}/6)`);
+          console.log(`[DevOps] PostgreSQL is waking up... waiting 2 seconds (${i + 1}/15)`);
           await new Promise(resolve => setTimeout(resolve, 2000));
           adminClient = new Client({ connectionString: DEFAULT_DB_URL });
         }
@@ -108,7 +109,6 @@ function postgresDatabasePlugin() {
             return; 
           }
 
-          // ✨ FIX: If Docker is still waking up, tell React to wait instead of crashing!
           if (!pool) {
             res.statusCode = 503;
             res.end(JSON.stringify({ error: `Database is still starting up... Please wait 5 seconds and refresh the page.` }));
