@@ -24,18 +24,23 @@ function postgresDatabasePlugin() {
           isConnected = true;
           break; 
         } catch (err) {
+          console.log(`[DevOps] PostgreSQL is waking up... waiting 2 seconds (${i + 1}/6)`);
           await new Promise(resolve => setTimeout(resolve, 2000));
           adminClient = new Client({ connectionString: DEFAULT_DB_URL });
         }
       }
 
-      if (!isConnected) throw new Error("Could not connect to PostgreSQL.");
+      if (!isConnected) throw new Error("Could not connect to PostgreSQL. Is Docker running?");
 
       const dbCheck = await adminClient.query(`SELECT datname FROM pg_catalog.pg_database WHERE datname = '${DB_NAME}'`);
-      if (dbCheck.rowCount === 0) await adminClient.query(`CREATE DATABASE ${DB_NAME}`);
+      if (dbCheck.rowCount === 0) {
+        console.log(`[DevOps] Database '${DB_NAME}' not found. Auto-creating...`);
+        await adminClient.query(`CREATE DATABASE ${DB_NAME}`);
+      }
       await adminClient.end();
 
       pool = new Pool({ connectionString: DB_URL, max: 20, idleTimeoutMillis: 30000 });
+      console.log(`[DevOps] Successfully Connected to PostgreSQL Pool: ${DB_NAME}`);
 
       await pool.query(`
         CREATE TABLE IF NOT EXISTS profiles (id TEXT PRIMARY KEY, email TEXT UNIQUE, password TEXT, full_name TEXT, role TEXT, created_at TIMESTAMPTZ);
@@ -54,18 +59,22 @@ function postgresDatabasePlugin() {
 
       const userCount = await pool.query('SELECT count(*) as count FROM profiles');
       if (parseInt(userCount.rows[0].count) === 0) {
+        console.log("[DevOps] Seeding Sample Products & Recipes...");
+
         await pool.query(`INSERT INTO profiles (id, email, password, full_name, role, created_at) VALUES ('1', 'admin@cafe.com', 'password', 'Admin Boss', 'admin', CURRENT_TIMESTAMP)`);
         await pool.query(`INSERT INTO profiles (id, email, password, full_name, role, created_at) VALUES ('2', 'staff@cafe.com', 'password', 'Friendly Barista', 'employee', CURRENT_TIMESTAMP)`);
         
-        // ✨ Set Default Float to 800 PHP
         await pool.query(`INSERT INTO settings (key, value) VALUES ('business_day_start', '08:00'), ('default_floating_cash', '800')`);
         
         await pool.query(`INSERT INTO categories (id, name, created_at) VALUES ('c1', 'Coffee', CURRENT_TIMESTAMP), ('c2', 'Milk Tea', CURRENT_TIMESTAMP), ('c3', 'Pastries', CURRENT_TIMESTAMP)`);
 
         await pool.query(`INSERT INTO ingredients (id, name, stock, unit, created_at) VALUES 
-          ('i1', 'Espresso Beans', 5000, 'g', CURRENT_TIMESTAMP), ('i2', 'Whole Milk', 10000, 'ml', CURRENT_TIMESTAMP),
-          ('i3', 'Caramel Syrup', 2000, 'ml', CURRENT_TIMESTAMP), ('i4', 'Plastic Cup 16oz', 500, 'pcs', CURRENT_TIMESTAMP),
-          ('i5', 'Black Tea Leaves', 2000, 'g', CURRENT_TIMESTAMP), ('i6', 'Tapioca Pearls', 3000, 'g', CURRENT_TIMESTAMP),
+          ('i1', 'Espresso Beans', 5000, 'g', CURRENT_TIMESTAMP),
+          ('i2', 'Whole Milk', 10000, 'ml', CURRENT_TIMESTAMP),
+          ('i3', 'Caramel Syrup', 2000, 'ml', CURRENT_TIMESTAMP),
+          ('i4', 'Plastic Cup 16oz', 500, 'pcs', CURRENT_TIMESTAMP),
+          ('i5', 'Black Tea Leaves', 2000, 'g', CURRENT_TIMESTAMP),
+          ('i6', 'Tapioca Pearls', 3000, 'g', CURRENT_TIMESTAMP),
           ('i7', 'Brown Sugar Syrup', 2000, 'ml', CURRENT_TIMESTAMP)
         `);
 
@@ -80,7 +89,9 @@ function postgresDatabasePlugin() {
           ('pi5', 'p2', 'i5', 15, CURRENT_TIMESTAMP), ('pi6', 'p2', 'i2', 150, CURRENT_TIMESTAMP), ('pi7', 'p2', 'i7', 40, CURRENT_TIMESTAMP), ('pi8', 'p2', 'i6', 50, CURRENT_TIMESTAMP), ('pi9', 'p2', 'i4', 1, CURRENT_TIMESTAMP)
         `);
       }
-    } catch (error: any) { dbConnectionError = error.message; }
+    } catch (error: any) {
+      dbConnectionError = error.message; 
+    }
   };
 
   return {
@@ -90,7 +101,20 @@ function postgresDatabasePlugin() {
       server.middlewares.use(async (req: any, res: any, next: any) => {
         if (req.url.startsWith('/api/sql') && req.method === 'POST') {
           res.setHeader('Content-Type', 'application/json');
-          if (dbConnectionError) { res.statusCode = 500; res.end(JSON.stringify({ error: `PostgreSQL Error: ${dbConnectionError}` })); return; }
+          
+          if (dbConnectionError) { 
+            res.statusCode = 500; 
+            res.end(JSON.stringify({ error: `PostgreSQL Error: ${dbConnectionError}` })); 
+            return; 
+          }
+
+          // ✨ FIX: If Docker is still waking up, tell React to wait instead of crashing!
+          if (!pool) {
+            res.statusCode = 503;
+            res.end(JSON.stringify({ error: `Database is still starting up... Please wait 5 seconds and refresh the page.` }));
+            return;
+          }
+
           let body = '';
           req.on('data', (chunk: any) => body += chunk.toString());
           req.on('end', async () => {
