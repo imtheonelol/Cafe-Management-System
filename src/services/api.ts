@@ -60,18 +60,18 @@ export const ApiService = {
   async createOrder(employeeId: string, cartItems: CartItem[], total: number, taxAmount: number, discountType: string, paymentMethod: string, receiptNumber: string) {
     const orderId = generateId();
     
-    // 🐛 BUG FIXED: Removed the 'fulfillment_status' column so the database doesn't crash on checkout!
+    // 🛑 BUG FIXED: Removed `fulfillment_status` entirely from this payload!
     const orderData = { 
-        id: orderId, 
-        order_number: `ORD-${Date.now()}`, 
-        total, 
-        tax_amount: taxAmount, 
-        discount_type: discountType, 
-        payment_method: paymentMethod, 
-        payment_status: 'completed', 
-        receipt_number: receiptNumber, 
-        employee_id: employeeId, 
-        created_at: new Date().toISOString() 
+      id: orderId, 
+      order_number: `ORD-${Date.now()}`, 
+      total, 
+      tax_amount: taxAmount, 
+      discount_type: discountType, 
+      payment_method: paymentMethod, 
+      payment_status: 'completed', 
+      receipt_number: receiptNumber, 
+      employee_id: employeeId, 
+      created_at: new Date().toISOString() 
     };
     
     await sqlRequest({ action: 'INSERT', table: 'orders', data: orderData });

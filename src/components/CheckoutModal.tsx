@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, CreditCard, Wallet, DollarSign, Printer } from 'lucide-react';
+import { X, CreditCard, Wallet, Printer } from 'lucide-react'; // 🛑 Removed DollarSign import
 import { ApiService } from '../services/api';
 
 export function CheckoutModal({ isOpen, onClose, items, onConfirmPayment }: any) {
@@ -86,7 +86,8 @@ export function CheckoutModal({ isOpen, onClose, items, onConfirmPayment }: any)
                 </button>
               </div>
               <div className="relative mb-2">
-                <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                {/* 🛑 Replaced DollarSign icon with a ₱ text icon */}
+                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-bold text-xl">₱</div>
                 <input type="number" step="0.01" value={amountGiven} onChange={(e) => setAmountGiven(e.target.value)} className="w-full pl-12 pr-4 py-3 border-2 border-gray-200 rounded-lg text-2xl font-black outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all text-gray-800" placeholder="0.00" />
               </div>
               {parseFloat(amountGiven || '0') >= (finalTotal - 0.01) && (
