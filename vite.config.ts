@@ -4,13 +4,14 @@ import { Client, Pool } from 'pg';
 
 const PG_PASSWORD = 'password';
 const DB_HOST = '127.0.0.1';
+const DB_PORT = '5433'; // 👈 CHANGED TO PORT 5433 TO AVOID WINDOWS CONFLICTS
 const DB_NAME = 'cafe_pos';
 
-const DEFAULT_DB_URL = `postgres://postgres:${PG_PASSWORD}@${DB_HOST}:5432/postgres`;
-const DB_URL = `postgres://postgres:${PG_PASSWORD}@${DB_HOST}:5432/${DB_NAME}`;
+const DEFAULT_DB_URL = `postgres://postgres:${PG_PASSWORD}@${DB_HOST}:${DB_PORT}/postgres`;
+const DB_URL = `postgres://postgres:${PG_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}`;
 
 function postgresDatabasePlugin() {
-  let pool: Pool;
+  let pool: Pool | null = null;
   let dbConnectionError: string | null = null;
 
   const initDB = async () => {
@@ -18,32 +19,27 @@ function postgresDatabasePlugin() {
       let adminClient = new Client({ connectionString: DEFAULT_DB_URL });
       let isConnected = false;
 
-      // ✨ INCREASED RETRIES: Now waits up to 30 seconds for Docker to wake up!
       for (let i = 0; i < 15; i++) {
         try {
           await adminClient.connect();
           isConnected = true;
           break; 
-        } catch (err) {
-          console.log(`[DevOps] PostgreSQL is waking up... waiting 2 seconds (${i + 1}/15)`);
+        } catch (err: any) {
+          console.log(`[DevOps] Database waking up on Port ${DB_PORT}... (${i + 1}/15) | Info: ${err.message}`);
           await new Promise(resolve => setTimeout(resolve, 2000));
           adminClient = new Client({ connectionString: DEFAULT_DB_URL });
         }
       }
 
-      if (!isConnected) throw new Error("Could not connect to PostgreSQL. Is Docker running?");
+      if (!isConnected) throw new Error(`Could not connect to PostgreSQL on port ${DB_PORT}. Is Docker running?`);
 
       const dbCheck = await adminClient.query(`SELECT datname FROM pg_catalog.pg_database WHERE datname = '${DB_NAME}'`);
-      if (dbCheck.rowCount === 0) {
-        console.log(`[DevOps] Database '${DB_NAME}' not found. Auto-creating...`);
-        await adminClient.query(`CREATE DATABASE ${DB_NAME}`);
-      }
+      if (dbCheck.rowCount === 0) await adminClient.query(`CREATE DATABASE ${DB_NAME}`);
       await adminClient.end();
 
-      pool = new Pool({ connectionString: DB_URL, max: 20, idleTimeoutMillis: 30000 });
-      console.log(`[DevOps] Successfully Connected to PostgreSQL Pool: ${DB_NAME}`);
+      const newPool = new Pool({ connectionString: DB_URL, max: 20, idleTimeoutMillis: 30000 });
 
-      await pool.query(`
+      await newPool.query(`
         CREATE TABLE IF NOT EXISTS profiles (id TEXT PRIMARY KEY, email TEXT UNIQUE, password TEXT, full_name TEXT, role TEXT, created_at TIMESTAMPTZ);
         CREATE TABLE IF NOT EXISTS categories (id TEXT PRIMARY KEY, name TEXT UNIQUE, created_at TIMESTAMPTZ);
         CREATE TABLE IF NOT EXISTS products (id TEXT PRIMARY KEY, category_id TEXT, name TEXT, description TEXT, price NUMERIC, image_url TEXT, stock INTEGER, is_available BOOLEAN, created_at TIMESTAMPTZ);
@@ -58,40 +54,23 @@ function postgresDatabasePlugin() {
         ALTER TABLE orders ADD COLUMN IF NOT EXISTS tax_amount NUMERIC DEFAULT 0;
       `);
 
-      const userCount = await pool.query('SELECT count(*) as count FROM profiles');
+      const userCount = await newPool.query('SELECT count(*) as count FROM profiles');
       if (parseInt(userCount.rows[0].count) === 0) {
         console.log("[DevOps] Seeding Sample Products & Recipes...");
-
-        await pool.query(`INSERT INTO profiles (id, email, password, full_name, role, created_at) VALUES ('1', 'admin@cafe.com', 'password', 'Admin Boss', 'admin', CURRENT_TIMESTAMP)`);
-        await pool.query(`INSERT INTO profiles (id, email, password, full_name, role, created_at) VALUES ('2', 'staff@cafe.com', 'password', 'Friendly Barista', 'employee', CURRENT_TIMESTAMP)`);
-        
-        await pool.query(`INSERT INTO settings (key, value) VALUES ('business_day_start', '08:00'), ('default_floating_cash', '800')`);
-        
-        await pool.query(`INSERT INTO categories (id, name, created_at) VALUES ('c1', 'Coffee', CURRENT_TIMESTAMP), ('c2', 'Milk Tea', CURRENT_TIMESTAMP), ('c3', 'Pastries', CURRENT_TIMESTAMP)`);
-
-        await pool.query(`INSERT INTO ingredients (id, name, stock, unit, created_at) VALUES 
-          ('i1', 'Espresso Beans', 5000, 'g', CURRENT_TIMESTAMP),
-          ('i2', 'Whole Milk', 10000, 'ml', CURRENT_TIMESTAMP),
-          ('i3', 'Caramel Syrup', 2000, 'ml', CURRENT_TIMESTAMP),
-          ('i4', 'Plastic Cup 16oz', 500, 'pcs', CURRENT_TIMESTAMP),
-          ('i5', 'Black Tea Leaves', 2000, 'g', CURRENT_TIMESTAMP),
-          ('i6', 'Tapioca Pearls', 3000, 'g', CURRENT_TIMESTAMP),
-          ('i7', 'Brown Sugar Syrup', 2000, 'ml', CURRENT_TIMESTAMP)
-        `);
-
-        await pool.query(`INSERT INTO products (id, category_id, name, description, price, image_url, stock, is_available, created_at) VALUES 
-          ('p1', 'c1', 'Iced Caramel Macchiato', 'Rich espresso with milk and caramel drizzle', 165.0, 'https://images.pexels.com/photos/312418/pexels-photo-312418.jpeg?auto=compress&cs=tinysrgb&w=400', 100, true, CURRENT_TIMESTAMP),
-          ('p2', 'c2', 'Okinawa Milk Tea', 'Roasted brown sugar milk tea with pearls', 120.0, 'https://images.pexels.com/photos/4955257/pexels-photo-4955257.jpeg?auto=compress&cs=tinysrgb&w=400', 100, true, CURRENT_TIMESTAMP),
-          ('p3', 'c3', 'Butter Croissant', 'Classic flaky French pastry', 85.0, 'https://images.pexels.com/photos/2135677/pexels-photo-2135677.jpeg?auto=compress&cs=tinysrgb&w=400', 50, true, CURRENT_TIMESTAMP)
-        `);
-
-        await pool.query(`INSERT INTO product_ingredients (id, product_id, ingredient_id, quantity, created_at) VALUES 
-          ('pi1', 'p1', 'i1', 18, CURRENT_TIMESTAMP), ('pi2', 'p1', 'i2', 200, CURRENT_TIMESTAMP), ('pi3', 'p1', 'i3', 30, CURRENT_TIMESTAMP), ('pi4', 'p1', 'i4', 1, CURRENT_TIMESTAMP),
-          ('pi5', 'p2', 'i5', 15, CURRENT_TIMESTAMP), ('pi6', 'p2', 'i2', 150, CURRENT_TIMESTAMP), ('pi7', 'p2', 'i7', 40, CURRENT_TIMESTAMP), ('pi8', 'p2', 'i6', 50, CURRENT_TIMESTAMP), ('pi9', 'p2', 'i4', 1, CURRENT_TIMESTAMP)
-        `);
+        await newPool.query(`INSERT INTO profiles (id, email, password, full_name, role, created_at) VALUES ('1', 'admin@cafe.com', 'password', 'Admin Boss', 'admin', CURRENT_TIMESTAMP)`);
+        await newPool.query(`INSERT INTO profiles (id, email, password, full_name, role, created_at) VALUES ('2', 'staff@cafe.com', 'password', 'Friendly Barista', 'employee', CURRENT_TIMESTAMP)`);
+        await newPool.query(`INSERT INTO settings (key, value) VALUES ('business_day_start', '08:00'), ('default_floating_cash', '800')`);
+        await newPool.query(`INSERT INTO categories (id, name, created_at) VALUES ('c1', 'Coffee', CURRENT_TIMESTAMP), ('c2', 'Milk Tea', CURRENT_TIMESTAMP), ('c3', 'Pastries', CURRENT_TIMESTAMP)`);
+        await newPool.query(`INSERT INTO ingredients (id, name, stock, unit, created_at) VALUES ('i1', 'Espresso Beans', 5000, 'g', CURRENT_TIMESTAMP), ('i2', 'Whole Milk', 10000, 'ml', CURRENT_TIMESTAMP), ('i3', 'Caramel Syrup', 2000, 'ml', CURRENT_TIMESTAMP), ('i4', 'Plastic Cup 16oz', 500, 'pcs', CURRENT_TIMESTAMP), ('i5', 'Black Tea Leaves', 2000, 'g', CURRENT_TIMESTAMP), ('i6', 'Tapioca Pearls', 3000, 'g', CURRENT_TIMESTAMP), ('i7', 'Brown Sugar Syrup', 2000, 'ml', CURRENT_TIMESTAMP)`);
+        await newPool.query(`INSERT INTO products (id, category_id, name, description, price, image_url, stock, is_available, created_at) VALUES ('p1', 'c1', 'Iced Caramel Macchiato', 'Rich espresso with milk and caramel drizzle', 165.0, 'https://images.pexels.com/photos/312418/pexels-photo-312418.jpeg?auto=compress&cs=tinysrgb&w=400', 100, true, CURRENT_TIMESTAMP), ('p2', 'c2', 'Okinawa Milk Tea', 'Roasted brown sugar milk tea with pearls', 120.0, 'https://images.pexels.com/photos/4955257/pexels-photo-4955257.jpeg?auto=compress&cs=tinysrgb&w=400', 100, true, CURRENT_TIMESTAMP), ('p3', 'c3', 'Butter Croissant', 'Classic flaky French pastry', 85.0, 'https://images.pexels.com/photos/2135677/pexels-photo-2135677.jpeg?auto=compress&cs=tinysrgb&w=400', 50, true, CURRENT_TIMESTAMP)`);
+        await newPool.query(`INSERT INTO product_ingredients (id, product_id, ingredient_id, quantity, created_at) VALUES ('pi1', 'p1', 'i1', 18, CURRENT_TIMESTAMP), ('pi2', 'p1', 'i2', 200, CURRENT_TIMESTAMP), ('pi3', 'p1', 'i3', 30, CURRENT_TIMESTAMP), ('pi4', 'p1', 'i4', 1, CURRENT_TIMESTAMP), ('pi5', 'p2', 'i5', 15, CURRENT_TIMESTAMP), ('pi6', 'p2', 'i2', 150, CURRENT_TIMESTAMP), ('pi7', 'p2', 'i7', 40, CURRENT_TIMESTAMP), ('pi8', 'p2', 'i6', 50, CURRENT_TIMESTAMP), ('pi9', 'p2', 'i4', 1, CURRENT_TIMESTAMP)`);
       }
-    } catch (error: any) {
+
+      pool = newPool; // 👈 Assigns the pool ONLY when fully successful
+      console.log(`[DevOps] System Ready! Database is online and connected.`);
+    } catch (error: any) { 
       dbConnectionError = error.message; 
+      console.error(`\n❌ [DATABASE FATAL ERROR]: ${error.message}\n`);
     }
   };
 
@@ -105,14 +84,12 @@ function postgresDatabasePlugin() {
           
           if (dbConnectionError) { 
             res.statusCode = 500; 
-            res.end(JSON.stringify({ error: `PostgreSQL Error: ${dbConnectionError}` })); 
-            return; 
+            return res.end(JSON.stringify({ error: `PostgreSQL Error: ${dbConnectionError}` })); 
           }
 
-          if (!pool) {
-            res.statusCode = 503;
-            res.end(JSON.stringify({ error: `Database is still starting up... Please wait 5 seconds and refresh the page.` }));
-            return;
+          if (!pool) { 
+            res.statusCode = 503; 
+            return res.end(JSON.stringify({ error: `Database is still starting up... Please wait 5 seconds and refresh the page.` })); 
           }
 
           let body = '';
@@ -123,24 +100,27 @@ function postgresDatabasePlugin() {
               if (action === 'QUERY') {
                 let pgQuery = query;
                 if (params) { params.forEach((_: any, i: number) => { pgQuery = pgQuery.replace('?', `$${i + 1}`); }); }
-                const result = await pool.query(pgQuery, params || []);
+                const result = await pool!.query(pgQuery, params || []);
                 res.end(JSON.stringify(result.rows));
               } else if (action === 'INSERT') {
                 const keys = Object.keys(data).join(', ');
                 const values = Object.values(data);
                 const placeholders = values.map((_, i) => `$${i + 1}`).join(', ');
-                await pool.query(`INSERT INTO ${table} (${keys}) VALUES (${placeholders})`, values);
+                await pool!.query(`INSERT INTO ${table} (${keys}) VALUES (${placeholders})`, values);
                 res.end(JSON.stringify({ success: true }));
               } else if (action === 'UPDATE') {
                 const values = Object.values(data);
                 const sets = Object.keys(data).map((k, i) => `${k} = $${i + 1}`).join(', ');
-                await pool.query(`UPDATE ${table} SET ${sets} WHERE id = $${values.length + 1}`, [...values, id]);
+                await pool!.query(`UPDATE ${table} SET ${sets} WHERE id = $${values.length + 1}`, [...values, id]);
                 res.end(JSON.stringify({ success: true }));
               } else if (action === 'DELETE') {
-                await pool.query(`DELETE FROM ${table} WHERE id = $1`, [id]);
+                await pool!.query(`DELETE FROM ${table} WHERE id = $1`, [id]);
                 res.end(JSON.stringify({ success: true }));
               }
-            } catch (err: any) { res.statusCode = 500; res.end(JSON.stringify({ error: err.message })); }
+            } catch (err: any) { 
+              res.statusCode = 500; 
+              res.end(JSON.stringify({ error: err.message })); 
+            }
           });
           return;
         }
