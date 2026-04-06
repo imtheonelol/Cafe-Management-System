@@ -17,7 +17,7 @@ export const ApiService = {
   async checkConnection() { try { await this.ensureInit(); return true; } catch { return false; } },
   
   async login(email: string, password: string) {
-    const users = await sqlRequest({ action: 'QUERY', query: 'SELECT * FROM profiles WHERE email = $1 AND password = $2', params: [email, password] });
+    const users = await sqlRequest({ action: 'QUERY', query: 'SELECT * FROM profiles WHERE email = ? AND password = ?', params: [email, password] });
     if (!users || users.length === 0) throw new Error("Invalid credentials.");
     const session = { user: { id: users[0].id, email: users[0].email } };
     localStorage.setItem(SESSION_KEY, JSON.stringify(session));
@@ -27,18 +27,18 @@ export const ApiService = {
 
   onAuthStateChange(callback: (session: any) => void) { authListeners.push(callback); return { unsubscribe: () => { authListeners = authListeners.filter(l => l !== callback); } }; },
   async getSession() { const s = localStorage.getItem(SESSION_KEY); return s ? JSON.parse(s) : null; },
-  async getProfile(userId: string) { const r = await sqlRequest({ action: 'QUERY', query: 'SELECT * FROM profiles WHERE id = $1', params: [userId] }); return r[0] || null; },
+  async getProfile(userId: string) { const r = await sqlRequest({ action: 'QUERY', query: 'SELECT * FROM profiles WHERE id = ?', params: [userId] }); return r[0] || null; },
   async logout() { localStorage.removeItem(SESSION_KEY); authListeners.forEach(l => l(null)); },
   async getProfiles() { return await sqlRequest({ action: 'QUERY', query: 'SELECT * FROM profiles ORDER BY created_at DESC' }); },
 
   async getSettings() { const rows = await sqlRequest({ action: 'QUERY', query: 'SELECT * FROM settings' }); return rows.reduce((acc: any, row: any) => ({ ...acc, [row.key]: row.value }), {}); },
   
   async updateSetting(key: string, value: string) { 
-    const existing = await sqlRequest({ action: 'QUERY', query: 'SELECT * FROM settings WHERE key = $1', params: [key] });
+    const existing = await sqlRequest({ action: 'QUERY', query: 'SELECT * FROM settings WHERE key = ?', params: [key] });
     if (existing.length > 0) {
-      await sqlRequest({ action: 'QUERY', query: 'UPDATE settings SET value = $1 WHERE key = $2', params: [value, key] });
+      await sqlRequest({ action: 'QUERY', query: 'UPDATE settings SET value = ? WHERE key = ?', params: [value, key] });
     } else {
-      await sqlRequest({ action: 'QUERY', query: 'INSERT INTO settings (key, value) VALUES ($1, $2)', params: [key, value] });
+      await sqlRequest({ action: 'QUERY', query: 'INSERT INTO settings (key, value) VALUES (?, ?)', params: [key, value] });
     }
   },
 
@@ -59,15 +59,29 @@ export const ApiService = {
 
   async createOrder(employeeId: string, cartItems: CartItem[], total: number, taxAmount: number, discountType: string, paymentMethod: string, receiptNumber: string) {
     const orderId = generateId();
-    const orderData = { id: orderId, order_number: `ORD-${Date.now()}`, total, tax_amount: taxAmount, discount_type: discountType, payment_method: paymentMethod, payment_status: 'completed', fulfillment_status: 'pending', receipt_number: receiptNumber, employee_id: employeeId, created_at: new Date().toISOString() };
+    
+    // 🐛 BUG FIXED: Removed the 'fulfillment_status' column so the database doesn't crash on checkout!
+    const orderData = { 
+        id: orderId, 
+        order_number: `ORD-${Date.now()}`, 
+        total, 
+        tax_amount: taxAmount, 
+        discount_type: discountType, 
+        payment_method: paymentMethod, 
+        payment_status: 'completed', 
+        receipt_number: receiptNumber, 
+        employee_id: employeeId, 
+        created_at: new Date().toISOString() 
+    };
+    
     await sqlRequest({ action: 'INSERT', table: 'orders', data: orderData });
 
     for (const item of cartItems) {
       await sqlRequest({ action: 'INSERT', table: 'order_items', data: { id: generateId(), order_id: orderId, product_id: item.id, quantity: item.cartQuantity, price: item.price, subtotal: item.price * item.cartQuantity, created_at: new Date().toISOString() }});
-      await sqlRequest({ action: 'QUERY', query: 'UPDATE products SET stock = stock - $1 WHERE id = $2', params: [item.cartQuantity, item.id] });
-      const pIngs = await sqlRequest({ action: 'QUERY', query: 'SELECT * FROM product_ingredients WHERE product_id = $1', params: [item.id]});
+      await sqlRequest({ action: 'QUERY', query: 'UPDATE products SET stock = stock - ? WHERE id = ?', params: [item.cartQuantity, item.id] });
+      const pIngs = await sqlRequest({ action: 'QUERY', query: 'SELECT * FROM product_ingredients WHERE product_id = ?', params: [item.id]});
       for (const pi of pIngs) {
-        await sqlRequest({ action: 'QUERY', query: 'UPDATE ingredients SET stock = stock - $1 WHERE id = $2', params: [parseFloat(pi.quantity) * item.cartQuantity, pi.ingredient_id] });
+        await sqlRequest({ action: 'QUERY', query: 'UPDATE ingredients SET stock = stock - ? WHERE id = ?', params: [parseFloat(pi.quantity) * item.cartQuantity, pi.ingredient_id] });
       }
     }
     window.dispatchEvent(new Event('db_changed'));
@@ -75,7 +89,7 @@ export const ApiService = {
   },
 
   async getActiveShift(employeeId: string) {
-    const rows = await sqlRequest({ action: 'QUERY', query: 'SELECT * FROM shifts WHERE employee_id = $1 AND end_time IS NULL', params: [employeeId] });
+    const rows = await sqlRequest({ action: 'QUERY', query: 'SELECT * FROM shifts WHERE employee_id = ? AND end_time IS NULL', params: [employeeId] });
     const shift = rows[0] || null;
     if (shift) {
       const settings = await this.getSettings();
@@ -97,12 +111,12 @@ export const ApiService = {
   async startShift(employeeId: string, startingCash: number) { const data = { id: generateId(), employee_id: employeeId, starting_cash: startingCash, start_time: new Date().toISOString() }; await sqlRequest({ action: 'INSERT', table: 'shifts', data }); return data; },
   
   async getCashSalesForShift(employeeId: string, startTime: string) { 
-    const r = await sqlRequest({ action: 'QUERY', query: "SELECT total FROM orders WHERE employee_id = $1 AND payment_method = 'cash' AND created_at >= $2", params: [employeeId, startTime] }); 
+    const r = await sqlRequest({ action: 'QUERY', query: "SELECT total FROM orders WHERE employee_id = ? AND payment_method = 'cash' AND created_at >= ?", params: [employeeId, startTime] }); 
     return r.reduce((sum: number, o: any) => sum + parseFloat(o.total), 0); 
   },
 
   async getShiftSalesBreakdown(employeeId: string, startTime: string) {
-    const r = await sqlRequest({ action: 'QUERY', query: "SELECT payment_method, total FROM orders WHERE employee_id = $1 AND created_at >= $2", params: [employeeId, startTime] });
+    const r = await sqlRequest({ action: 'QUERY', query: "SELECT payment_method, total FROM orders WHERE employee_id = ? AND created_at >= ?", params: [employeeId, startTime] });
     const breakdown = { total: 0, cash: 0, card: 0, online: 0 };
     r.forEach((o: any) => {
       const amount = parseFloat(o.total);
@@ -125,7 +139,6 @@ export const ApiService = {
     };
   },
 
-  // ✨ BULLETPROOF TELEGRAM REPORT (Strictly scopes current 24H boundary)
   async sendDailyReportToTelegram() {
     const settings = await this.getSettings();
     const webhookUrl = settings.activepieces_webhook_url;
@@ -137,8 +150,8 @@ export const ApiService = {
     if (now < bizStart) bizStart.setDate(bizStart.getDate() - 1);
     let bizEnd = new Date(bizStart); bizEnd.setDate(bizEnd.getDate() + 1);
 
-    const shifts = await sqlRequest({ action: 'QUERY', query: 'SELECT s.*, p.full_name FROM shifts s LEFT JOIN profiles p ON s.employee_id = p.id WHERE s.start_time >= $1 AND s.start_time < $2 ORDER BY s.start_time ASC', params: [bizStart.toISOString(), bizEnd.toISOString()] });
-    const orders = await sqlRequest({ action: 'QUERY', query: 'SELECT * FROM orders WHERE created_at >= $1 AND created_at < $2', params: [bizStart.toISOString(), bizEnd.toISOString()] });
+    const shifts = await sqlRequest({ action: 'QUERY', query: 'SELECT s.*, p.full_name FROM shifts s LEFT JOIN profiles p ON s.employee_id = p.id WHERE s.start_time >= ? AND s.start_time < ? ORDER BY s.start_time ASC', params: [bizStart.toISOString(), bizEnd.toISOString()] });
+    const orders = await sqlRequest({ action: 'QUERY', query: 'SELECT * FROM orders WHERE created_at >= ? AND created_at < ?', params: [bizStart.toISOString(), bizEnd.toISOString()] });
 
     let totalSales = 0, totalCash = 0, totalCard = 0;
     orders.forEach((o: any) => {
